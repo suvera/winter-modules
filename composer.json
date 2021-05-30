@@ -1,0 +1,46 @@
+{
+  "name": "suvera/winter-modules",
+  "description": "Winter Boot modules",
+  "type": "library",
+  "config": {
+    "platform": {
+      "php": "8.0"
+    }
+  },
+  "license": "Apache",
+  "authors": [
+    {
+      "name": "Suvera",
+      "email": "rana.ram@gmail.com"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "dev\\winterframework\\data\\cassandra\\": "winter-data-cassandra/src/",
+      "test\\winterframework\\data\\cassandra\\": "winter-data-cassandra/srcTest/",
+      "dev\\winterframework\\data\\elastic\\": "winter-data-elastic/src/",
+      "test\\winterframework\\data\\elastic\\": "winter-data-elastic/srcTest/",
+      "dev\\winterframework\\data\\mongo\\": "winter-data-mongo/src/",
+      "test\\winterframework\\data\\mongo\\": "winter-data-mongo/srcTest/",
+      "dev\\winterframework\\data\\redis\\": "winter-data-redis/src/",
+      "test\\winterframework\\data\\redis\\": "winter-data-redis/srcTest/",
+      "dev\\winterframework\\kafka\\": "winter-kafka/src/",
+      "test\\winterframework\\kafka\\": "winter-kafka/srcTest/",
+      "dev\\winterframework\\ldap\\": "winter-ldap/src/",
+      "test\\winterframework\\ldap\\": "winter-ldap/srcTest/",
+      "dev\\winterframework\\security\\": "winter-security/src/",
+      "test\\winterframework\\security\\": "winter-security/srcTest/",
+      "dev\\winterframework\\soap\\": "winter-soap/src/",
+      "test\\winterframework\\soap\\": "winter-soap/srcTest/"
+    }
+  },
+  "minimum-stability": "dev",
+  "repositories": [
+  ],
+  "require": {
+    "ext-pcntl": "*"
+  },
+  "require-dev": {
+    "kwn/php-rdkafka-stubs": "dev-master"
+  }
+}
