@@ -1,16 +1,22 @@
 <?php
+/** @noinspection PhpUnused */
+declare(strict_types=1);
 
 namespace dev\winterframework\kafka\producer;
 
+use dev\winterframework\kafka\KafkaUtil;
+use dev\winterframework\util\log\Wlf4p;
 use RdKafka\Conf as RdKafkaConf;
 use RdKafka\Producer;
-use RdKafka\Topic;
+use RdKafka\ProducerTopic;
 
 class ProducerConfiguration {
+    use Wlf4p;
 
-    private static $defaults = [
+    private static array $defaults = [
         'metadata.broker.list' => null,
-        'bootstrap.servers' => null,
+        'log_level' => LOG_INFO,
+
         /**
          * Maximum Kafka protocol request message size.
          * Due to differing framing overhead between protocol versions the producer is unable to reliably enforce
@@ -36,16 +42,24 @@ class ProducerConfiguration {
          */
         'internal.termination.signal' => SIGIO,
 
+        /**
+         * This defines the maximum and default time librdkafka will wait before
+         * sending a batch of messages. Reducing this setting to e.g. 1ms ensures that
+         * messages are sent ASAP, instead of being batched.
+         */
+        'queue.buffering.max.ms' => 1,
+
     ];
 
     private int $retries = 0;
     private string $name = '';
     private string $topic = '';
+    protected bool $transactionEnabled = false;
 
     private array $config = [];
     private RdKafkaConf $conf;
     private Producer $rawProducer;
-    private Topic $topicObject;
+    private ProducerTopic $topicObject;
 
     /**
      * ConsumerConfiguration constructor.
@@ -65,8 +79,6 @@ class ProducerConfiguration {
                 $this->config[$key] = $value;
             }
         }
-
-        $this->config = $config;
     }
 
     /**
@@ -90,7 +102,13 @@ class ProducerConfiguration {
     protected function buildProducer(): void {
         $this->conf = new RdKafkaConf();
         foreach ($this->config as $key => $value) {
-            $this->conf->set($key, $value);
+            $this->conf->set($key, strval($value));
+        }
+        $this->conf->setLogCb([KafkaUtil::class, 'log']);
+
+        if ($this->isTransactionEnabled()) {
+            KafkaUtil::logDebug('kafka transactions enabled');
+            $this->conf->set('transactional.id', 'TRANSACTION-' . $this->getName());
         }
 
         $this->rawProducer = new Producer($this->conf);
@@ -107,16 +125,16 @@ class ProducerConfiguration {
     }
 
     /**
-     * @return Topic
+     * @return ProducerTopic
      */
-    public function getTopicObject(): Topic {
+    public function getTopicObject(): ProducerTopic {
         if (!isset($this->conf)) {
             $this->buildProducer();
             $this->topicObject = $this->rawProducer->newTopic($this->topic);
         }
         return $this->topicObject;
     }
-    
+
     /**
      * @return int
      */
@@ -165,5 +183,11 @@ class ProducerConfiguration {
         return $this;
     }
 
+    /**
+     * @return bool
+     */
+    public function isTransactionEnabled(): bool {
+        return $this->transactionEnabled;
+    }
 
 }

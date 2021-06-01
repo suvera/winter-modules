@@ -1,15 +1,16 @@
 <?php
+declare(strict_types=1);
 
 namespace dev\winterframework\kafka;
 
 use dev\winterframework\core\app\WinterModule;
 use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\core\context\ApplicationContextData;
-use dev\winterframework\core\context\WinterServer;
 use dev\winterframework\exception\FileNotFoundException;
 use dev\winterframework\exception\ModuleException;
 use dev\winterframework\io\file\DirectoryScanner;
 use dev\winterframework\kafka\consumer\ConsumerConfiguration;
+use dev\winterframework\kafka\exception\KafkaException;
 use dev\winterframework\kafka\producer\ProducerConfiguration;
 use dev\winterframework\stereotype\Module;
 use dev\winterframework\util\log\Wlf4p;
@@ -32,20 +33,22 @@ class KafkaModule implements WinterModule {
     }
 
     public function begin(ApplicationContext $ctx, ApplicationContextData $ctxData): void {
+        $moduleDef = $ctx->getModule(static::class);
+        $moduleConfig = $moduleDef->getConfig();
 
-        $prop = $ctxData->getPropertyContext();
-        $confFile = $prop->getStr('winter.kafka.confFile', '');
+        $confFile = $moduleConfig['configFile'] ?? null;
 
         if (!$confFile) {
             return;
         }
+
+        self::logInfo("Loading Kafka config from file '$confFile'");
 
         if ($confFile[0] != '/') {
             $configFiles = DirectoryScanner::scanFileInDirectories($ctxData->getBootConfig()->configDirectory, $confFile);
         } else {
             $configFiles = [$confFile];
         }
-
 
         if (empty($configFiles)) {
             self::logError('Could not find Kafka config file ' . json_encode($confFile));
@@ -63,11 +66,8 @@ class KafkaModule implements WinterModule {
         $this->startKafka($data, $ctx);
     }
 
+    /** @noinspection PhpUnusedParameterInspection */
     protected function startKafka(array $config, ApplicationContext $ctx): void {
-
-        /** @var WinterServer $wServer */
-        $wServer = $ctx->beanByClass(WinterServer::class);
-
         /** @var KafkaServiceImpl $kafkaService */
         $kafkaService = $ctx->beanByClass(KafkaServiceImpl::class);
 
@@ -95,8 +95,14 @@ class KafkaModule implements WinterModule {
         $kafkaService = $ctx->beanByClass(KafkaServiceImpl::class);
 
         $consumerDefaults = $this->getDefaults($config['consumers']);
-        $consumerDefaults['metadata.broker.list'] = $config['metadata.broker.list'];
-        $consumerDefaults['bootstrap.servers'] = $config['bootstrap.servers'];
+        if (isset($config['metadata.broker.list']) && $config['metadata.broker.list']) {
+            $consumerDefaults['metadata.broker.list'] = $config['metadata.broker.list'];
+        } else if (isset($config['bootstrap.servers']) && $config['bootstrap.servers']) {
+            $consumerDefaults['metadata.broker.list'] = $config['bootstrap.servers'];
+        } else {
+            throw new KafkaException('Either "bootstrap.servers" or "metadata.broker.list" must be set '
+                . 'in your kafka config ');
+        }
 
         foreach ($config['consumers'] as $data) {
             if ($data['name'] == self::__DEFAULT) {
@@ -117,8 +123,14 @@ class KafkaModule implements WinterModule {
         $kafkaService = $ctx->beanByClass(KafkaServiceImpl::class);
 
         $producerDefaults = $this->getDefaults($config['producers']);
-        $producerDefaults['metadata.broker.list'] = $config['metadata.broker.list'];
-        $producerDefaults['bootstrap.servers'] = $config['bootstrap.servers'];
+        if (isset($config['metadata.broker.list']) && $config['metadata.broker.list']) {
+            $producerDefaults['metadata.broker.list'] = $config['metadata.broker.list'];
+        } else if (isset($config['bootstrap.servers']) && $config['bootstrap.servers']) {
+            $producerDefaults['metadata.broker.list'] = $config['bootstrap.servers'];
+        } else {
+            throw new KafkaException('Either "bootstrap.servers" or "metadata.broker.list" must be set '
+                . 'in your kafka config ');
+        }
 
         foreach ($config['producers'] as $data) {
             if ($data['name'] == self::__DEFAULT) {

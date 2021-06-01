@@ -1,7 +1,11 @@
 <?php
+/** @noinspection PhpUnused */
+declare(strict_types=1);
+
 namespace dev\winterframework\kafka\consumer;
 
 use dev\winterframework\kafka\exception\KafkaRebalanceException;
+use dev\winterframework\kafka\KafkaUtil;
 use dev\winterframework\util\log\Wlf4p;
 use RdKafka\Conf as RdKafkaConf;
 use RdKafka\KafkaConsumer;
@@ -9,12 +13,13 @@ use RdKafka\KafkaConsumer;
 class ConsumerConfiguration {
     use Wlf4p;
 
-    private static $defaults = [
+    private static array $defaults = [
         'metadata.broker.list' => null,
-        'bootstrap.servers' => null,
+        'log_level' => LOG_INFO,
 
-        'auto.commit.enable' => true,
+        'enable.auto.commit' => true,
         'auto.commit.interval.ms' => 100,
+        'session.timeout.ms' => 9000,
 
         'auto.offset.reset' => 'earliest', // earliest, smallest, beginning, largest, latest, end, error
 
@@ -41,13 +46,6 @@ class ConsumerConfiguration {
          */
         'internal.termination.signal' => SIGIO,
 
-        /**
-         * This defines the maximum and default time librdkafka will wait before
-         * sending a batch of messages. Reducing this setting to e.g. 1ms ensures that
-         * messages are sent ASAP, instead of being batched.
-         */
-        'queue.buffering.max.ms' => 1,
-
         'message.max.bytes' => null,
         'max.message.bytes' => null,
         'fetch.max.bytes' => null,
@@ -55,12 +53,12 @@ class ConsumerConfiguration {
     ];
 
     private array $config = [];
-    private string $name = '';
+    private string $name = 'unnamed-group';
     private array $topics = [];
     private int $workerNum = 1;
     private string $workerClass = '';
     private array $transientExceptions = [];
-    private RdKafkaConf $conf;
+    private ?RdKafkaConf $conf = null;
     protected KafkaConsumer $rawConsumer;
 
     /**
@@ -81,8 +79,6 @@ class ConsumerConfiguration {
                 $this->config[$key] = $value;
             }
         }
-
-        $this->config = $config;
     }
 
     /**
@@ -106,19 +102,20 @@ class ConsumerConfiguration {
     protected function buildConsumer(): void {
         $this->conf = new RdKafkaConf();
         foreach ($this->config as $key => $value) {
-            $this->conf->set($key, $value);
+            $this->conf->set($key, strval($value));
         }
         $this->conf->set('group.id', $this->name);
+        $this->conf->setLogCb([KafkaUtil::class, 'log']);
 
         $this->conf->setRebalanceCb(function (KafkaConsumer $kafka, mixed $err, array $partitions = null) {
             switch ($err) {
                 case RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS:
-                    self::logInfo("Assigning Kafka partitions " . json_encode($partitions));
+                    self::logInfo("Assigning Kafka partitions: " . KafkaUtil::toPartitionsString($partitions));
                     $kafka->assign($partitions);
                     break;
 
                 case RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS:
-                    self::logInfo("Revoking Kafka partitions " . json_encode($partitions));
+                    self::logInfo("Revoking Kafka partitions: " . KafkaUtil::toPartitionsString($partitions));
                     $kafka->assign(null);
                     break;
 
@@ -138,6 +135,25 @@ class ConsumerConfiguration {
             $this->buildConsumer();
         }
         return $this->rawConsumer;
+    }
+
+    public function unsetRawConsumer(): void {
+
+        if (isset($this->rawConsumer)) {
+            $this->rawConsumer->close();
+        }
+
+        unset($this->conf);
+        unset($this->rawConsumer);
+    }
+
+    /**
+     * @param RdKafkaConf|null $conf
+     * @return ConsumerConfiguration
+     */
+    public function setConf(?RdKafkaConf $conf): ConsumerConfiguration {
+        $this->conf = $conf;
+        return $this;
     }
 
     /**
@@ -164,7 +180,7 @@ class ConsumerConfiguration {
     }
 
     /**
-     * @param string $topics
+     * @param array $topics
      * @return ConsumerConfiguration
      */
     public function setTopics(array $topics): ConsumerConfiguration {

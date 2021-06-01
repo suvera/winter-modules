@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace dev\winterframework\kafka\producer;
 
 use dev\winterframework\type\ArrayList;
