@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace dev\winterframework\kafka;
 
+use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\core\context\WinterServer;
 use dev\winterframework\kafka\consumer\Consumer;
 use dev\winterframework\kafka\consumer\ConsumerConfiguration;
@@ -27,6 +28,9 @@ class KafkaServiceImpl implements KafkaService {
 
     #[Autowired]
     private WinterServer $wServer;
+
+    #[Autowired]
+    private ApplicationContext $appCtx;
 
     private bool $consumerStarted = false;
 
@@ -184,7 +188,7 @@ class KafkaServiceImpl implements KafkaService {
 
                 $workerClass = $consumer->getWorkerClass();
                 /** @var Consumer $worker */
-                $worker = new $workerClass($consumer);
+                $worker = new $workerClass($this->appCtx, $consumer);
 
                 while (true) {
                     $message = $consumer->getRawConsumer()->consume(120 * 1000);

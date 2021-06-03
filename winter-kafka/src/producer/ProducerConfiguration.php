@@ -49,9 +49,17 @@ class ProducerConfiguration {
          */
         'queue.buffering.max.ms' => 1,
 
+        /**
+         * 'retries' - Alias for 'message.send.max.retries' How many times to retry sending a failing Message
+         * 'retry.backoff.ms' -The backoff time in milliseconds before retrying a protocol request.
+         * Note: retrying may cause reordering unless 'enable.idempotence' is set to true.
+         */
+        'message.send.max.retries' => null,
+        'retries' => null,
+        'retry.backoff.ms' => null,
+
     ];
 
-    private int $retries = 0;
     private string $name = '';
     private string $topic = '';
     protected bool $transactionEnabled = false;
@@ -133,22 +141,6 @@ class ProducerConfiguration {
             $this->topicObject = $this->rawProducer->newTopic($this->topic);
         }
         return $this->topicObject;
-    }
-
-    /**
-     * @return int
-     */
-    public function getRetries(): int {
-        return $this->retries;
-    }
-
-    /**
-     * @param int $retries
-     * @return ProducerConfiguration
-     */
-    public function setRetries(int $retries): ProducerConfiguration {
-        $this->retries = $retries;
-        return $this;
     }
 
     /**
