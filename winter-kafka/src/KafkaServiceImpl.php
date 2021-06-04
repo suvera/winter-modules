@@ -5,19 +5,14 @@ namespace dev\winterframework\kafka;
 
 use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\core\context\WinterServer;
-use dev\winterframework\kafka\consumer\Consumer;
 use dev\winterframework\kafka\consumer\ConsumerConfiguration;
 use dev\winterframework\kafka\consumer\ConsumerConfigurations;
-use dev\winterframework\kafka\consumer\ConsumerRecord;
-use dev\winterframework\kafka\consumer\ConsumerRecords;
 use dev\winterframework\kafka\exception\KafkaException;
 use dev\winterframework\kafka\producer\ProducerConfiguration;
 use dev\winterframework\kafka\producer\ProducerConfigurations;
 use dev\winterframework\stereotype\Autowired;
 use dev\winterframework\util\log\Wlf4p;
-use RdKafka\KafkaConsumerTopic;
 use RuntimeException;
-use Swoole\Process;
 use Throwable;
 
 class KafkaServiceImpl implements KafkaService {
@@ -172,87 +167,11 @@ class KafkaServiceImpl implements KafkaService {
     }
 
     protected function startConsumer(ConsumerConfiguration $consumer, int $i): void {
-
         //$consumer->getRawConsumer()->subscribe($consumer->getTopics());
         //self::logInfo('Consumer Subscribed ... ');
 
-        $this->wServer->getServer()->addProcess(
-
-            new Process(function ($process) use ($consumer, $i) {
-                /** @var Process $process */
-
-                $consumer->getRawConsumer()->subscribe($consumer->getTopics());
-                self::logInfo("Kafka consumer subscribed. '" . $consumer->getName()
-                    . "' kafka-worker-" . ($i + 1) . ',  pid: ' . $process->pid . ',  mypid: ' . getmypid()
-                    . ', topics: ' . json_encode($consumer->getTopics()));
-
-                $workerClass = $consumer->getWorkerClass();
-                /** @var Consumer $worker */
-                $worker = new $workerClass($this->appCtx, $consumer);
-
-                while (true) {
-                    $message = $consumer->getRawConsumer()->consume(120 * 1000);
-
-                    switch ($message->err) {
-
-                        case RD_KAFKA_RESP_ERR_NO_ERROR:
-                            $record = ConsumerRecord::fromMessage(
-                                $message,
-                                $consumer->getName()
-                            );
-                            $worker->consume(ConsumerRecords::ofValues($record));
-                            break;
-
-                        case RD_KAFKA_RESP_ERR__PARTITION_EOF:
-                            self::logDebug('No more kafka messages; will wait for more');
-                            break;
-
-                        case RD_KAFKA_RESP_ERR__TIMED_OUT:
-                            self::logDebug('Kafka consumer TCP connection Timed out, re-listening!');
-                            break;
-
-                        default:
-                            //26. RD_KAFKA_RESP_ERR_INVALID_SESSION_TIMEOUT Broker: Invalid session timeout
-                            self::logError('Kafka error ' . $message->err . ': ' . $message->errstr());
-                            throw new KafkaException($message->errstr(), $message->err);
-                    }
-                }
-            })
-        );
-    }
-
-    protected function validate(): void {
-        foreach ($this->consumers as $consumer) {
-            /** @var ConsumerConfiguration $consumer */
-            foreach ($consumer->getTopics() as $topic) {
-                try {
-                    /** @var KafkaConsumerTopic $topicObj */
-                    /** @noinspection PhpUndefinedMethodInspection */
-                    $topicObj = $consumer->getRawConsumer()->newTopic($topic);
-                    $metadata = $consumer->getRawConsumer()->getMetadata(false, $topicObj, 10000);
-
-                    $topics = $metadata->getTopics();
-
-                    unset($topicObj);
-                    unset($metadata);
-                    $consumer->unsetRawConsumer();
-
-                    if ($topics->count() != 1) {
-                        throw new RuntimeException('Kafka Topic "' . $topic . '" does not exist ');
-                    }
-
-                    foreach ($topics as $t) {
-                        if ($t->getErr()) {
-                            throw new RuntimeException('Kafka Topic "' . $topic . '" does not exist. "'
-                                . rd_kafka_err2str($t->getErr()) . '" ');
-                        }
-                    }
-                } catch (Throwable $e) {
-                    self::logException($e);
-                    throw new KafkaException($e->getMessage(), 0, $e);
-                }
-            }
-        }
+        $ps = new KafkaWorkerProcess($this->wServer, $this->appCtx, $consumer, $i + 1);
+        $this->wServer->getServer()->addProcess($ps);
     }
 
     public function beginConsume(): void {
@@ -260,8 +179,6 @@ class KafkaServiceImpl implements KafkaService {
         if ($this->consumerStarted) {
             return;
         }
-
-        $this->validate();
 
         foreach ($this->consumers as $consumer) {
             /** @var ConsumerConfiguration $consumer */

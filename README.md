@@ -20,11 +20,11 @@ modules:
 
 ## Modules
 
-- [Cassandra](winter-data-cassandra/README.md) 
-- [Elastic Search](winter-data-elastic/README.md) 
-- [MongoDB](winter-data-mongo/README.md) 
-- [Redis](winter-data-redis/README.md) 
-- [Apache Kafka](winter-kafka/README.md) 
-- [LDAP](winter-ldap/README.md)
-- [Security](winter-security/README.md)
-- [SOAP Web Services](winter-soap/README.md)
+- [Apache Kafka](winter-kafka/README.md)
+- Redis
+- Cassandra 
+- Elastic Search 
+- MongoDB
+- LDAP
+- Security
+- SOAP Web Services
