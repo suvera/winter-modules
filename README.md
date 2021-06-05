@@ -21,7 +21,7 @@ modules:
 ## Modules
 
 - [Apache Kafka](winter-kafka/README.md)
-- Redis
+- [Redis](winter-data-redis/README.md)
 - Cassandra 
 - Elastic Search 
 - MongoDB
