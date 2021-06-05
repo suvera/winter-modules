@@ -6,16 +6,13 @@ namespace dev\winterframework\kafka;
 use dev\winterframework\core\app\WinterModule;
 use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\core\context\ApplicationContextData;
-use dev\winterframework\exception\FileNotFoundException;
 use dev\winterframework\exception\ModuleException;
-use dev\winterframework\io\file\DirectoryScanner;
 use dev\winterframework\kafka\consumer\ConsumerConfiguration;
 use dev\winterframework\kafka\exception\KafkaException;
 use dev\winterframework\kafka\producer\ProducerConfiguration;
 use dev\winterframework\stereotype\Module;
 use dev\winterframework\util\log\Wlf4p;
 use dev\winterframework\util\ModuleTrait;
-use dev\winterframework\util\PropertyLoader;
 
 #[Module]
 class KafkaModule implements WinterModule {
@@ -34,36 +31,11 @@ class KafkaModule implements WinterModule {
 
     public function begin(ApplicationContext $ctx, ApplicationContextData $ctxData): void {
         $moduleDef = $ctx->getModule(static::class);
-        $moduleConfig = $moduleDef->getConfig();
+        $config = $this->retrieveConfiguration($ctx, $ctxData, $moduleDef);
 
-        $confFile = $moduleConfig['configFile'] ?? null;
-
-        if (!$confFile) {
-            return;
-        }
-
-        self::logInfo("Loading Kafka config from file '$confFile'");
-
-        if ($confFile[0] != '/') {
-            $configFiles = DirectoryScanner::scanFileInDirectories($ctxData->getBootConfig()->configDirectory, $confFile);
-        } else {
-            $configFiles = [$confFile];
-        }
-
-        if (empty($configFiles)) {
-            self::logError('Could not find Kafka config file ' . json_encode($confFile));
-            throw new FileNotFoundException('Could not find Kafka Config file');
-        }
-
-        $data = [];
-        foreach ($configFiles as $configFile) {
-            $conf = PropertyLoader::loadProperties($configFile);
-            $data = array_merge($data, $conf);
-        }
-
-        $this->buildConsumers($data, $ctx);
-        $this->buildProducers($data, $ctx);
-        $this->startKafka($data, $ctx);
+        $this->buildConsumers($config, $ctx);
+        $this->buildProducers($config, $ctx);
+        $this->startKafka($config, $ctx);
     }
 
     /** @noinspection PhpUnusedParameterInspection */

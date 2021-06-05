@@ -38,7 +38,8 @@
   "repositories": [
   ],
   "require": {
-    "ext-pcntl": "*"
+    "ext-pcntl": "*",
+    "ext-redis": "*"
   },
   "require-dev": {
     "kwn/php-rdkafka-stubs": "dev-master"

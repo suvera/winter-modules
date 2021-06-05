@@ -1,0 +1,44 @@
+phpredis:
+    singles:
+        -   name: beanUniqueName
+            persistence: true
+            host: 127.0.0.1
+            port: 6379
+            timeout: 0
+            retryInterval:
+            reserved:
+            readTimeout: 0
+
+    clusters:
+        -   name: beanUniqueName
+            clusterName: clusterName
+            hosts: [ 127.0.0.1 ]
+            timeout: 0
+            readTimeout: 0
+            persistent: true
+            auth: secret
+
+    sentinels:
+        -   name: beanUniqueName
+            persistence: true
+            host: 127.0.0.1
+            port: 6379
+            timeout: 0
+            retryTnterval:
+            readTimeout: 0
+
+    arrays:
+        -   name: beanUniqueName
+            arrayName: arrayName
+            hosts: [ ],
+            options:
+                -   consistent: true
+                    auth: mysecretpassword
+                    function: extract_key_part_func
+                    previous: [ ]
+                    retry_timeout: 0
+                    lazy_connect: false
+                    connect_timeout: 0.5
+                    read_timeout: 0.5
+                    algorithm: sha256
+                    distributor: dist_func
