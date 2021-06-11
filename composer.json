@@ -31,7 +31,9 @@
       "dev\\winterframework\\security\\": "winter-security/src/",
       "test\\winterframework\\security\\": "winter-security/srcTest/",
       "dev\\winterframework\\soap\\": "winter-soap/src/",
-      "test\\winterframework\\soap\\": "winter-soap/srcTest/"
+      "test\\winterframework\\soap\\": "winter-soap/srcTest/",
+      "dev\\winterframework\\dtce\\": "winter-dtce/src/",
+      "test\\winterframework\\dtce\\": "winter-dtce/srcTest/"
     }
   },
   "minimum-stability": "dev",

@@ -1,10 +1,12 @@
 <?php
+/** @noinspection PhpHierarchyChecksInspection */
 declare(strict_types=1);
-
 
 namespace dev\winterframework\data\redis\phpredis;
 
+use dev\winterframework\util\log\Wlf4p;
 use RedisCluster;
+use Throwable;
 
 /**
  * @method mixed acl(string $key_or_address, mixed $subcmd, array $args)
@@ -188,11 +190,44 @@ use RedisCluster;
  * @method mixed zscore(string $key, string $member)
  * @method mixed zunionstore(string $key, array $keys, array $weights, mixed $aggregate)
  */
-class PhpRedisClusterTemplate {
+class PhpRedisClusterTemplate implements PhpRedisAbstractTemplate {
+    use Wlf4p;
 
     private RedisCluster $redis;
 
     public function __construct(private array $config) {
+        $this->reConnect();
+    }
+
+    public function __call(string $name, array $arguments): mixed {
+        try {
+            return $this->redis->$name(...$arguments);
+        } catch (Throwable $e) {
+            self::logEx($e);
+
+            if (substr($name, -6) == '_xwait') {
+                $funcName = substr($name, 0, -6);
+                $waitMs = 0;
+                while (1) {
+                    if ($waitMs < 10000000) {
+                        $waitMs += 200000;
+                    }
+
+                    try {
+                        return $this->redis->$funcName(...$arguments);
+                    } catch (Throwable $e) {
+                        self::logEx($e);
+                        usleep($waitMs);
+                    }
+                }
+            }
+
+            $this->reConnect();
+            return $this->redis->$name(...$arguments);
+        }
+    }
+
+    protected function reConnect(): void {
         $this->redis = new RedisCluster(
             null,
             $this->config['hosts'],
@@ -201,9 +236,5 @@ class PhpRedisClusterTemplate {
             $this->config['persistent'] ?? false,
             $this->config['auth'] ?? null
         );
-    }
-
-    public function __call(string $name, array $arguments): mixed {
-        return $this->redis->$name(...$arguments);
     }
 }

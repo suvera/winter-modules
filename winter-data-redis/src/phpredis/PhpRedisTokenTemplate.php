@@ -2,6 +2,9 @@
 
 namespace dev\winterframework\data\redis\phpredis;
 
+use dev\winterframework\type\TypeAssert;
+use dev\winterframework\util\hash\HashProvider;
+use dev\winterframework\util\hash\MurmurHash3Provider;
 use dev\winterframework\util\log\Wlf4p;
 use Redis;
 use RedisException;
@@ -239,33 +242,111 @@ use Throwable;
  * @method mixed zSize(string $key)
  * @method mixed zUnion(string $key, array $keys, array $weights, mixed $aggregate)
  */
-class PhpRedisTemplate implements PhpRedisAbstractTemplate {
+class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
     use Wlf4p;
 
-    private Redis $redis;
+    /**
+     * @var Redis[]
+     */
+    private array $redis = [];
+    private array $tokens = [];
+    /**
+     * @var Redis[][]
+     */
+    private array $hosts = [];
+    private bool $strictTokenRing = false;
+    private HashProvider $hashProvider;
 
     public function __construct(private array $config) {
-        $this->redis = new Redis();
-        $this->reconnect();
+        $this->redis = [];
+        $this->init();
     }
 
-    private function reconnect(): void {
+    private function reconnect(string $hostName): void {
+        $connect = isset($this->config['persistence']) && $this->config['persistence'] ? 'pconnect' : 'connect';
+        $host = $this->hosts[$hostName];
+
+        $this->redis[$hostName]->$connect(
+            $host['host'],
+            $host['port'] ?? 6379,
+            $host['timeout'],
+            $host['reserved'],
+            $host['retryInterval'],
+            $host['readTimeout']
+        );
+    }
+
+    private function init(): void {
+        TypeAssert::array($this->config['hosts'], " 'hosts' config must be array");
+        $this->strictTokenRing = $this->config['strictTokenRing'] ?? false;
         $connect = isset($this->config['persistence']) && $this->config['persistence'] ? 'pconnect' : 'connect';
 
-        $this->redis->$connect(
-            $this->config['host'],
-            $this->config['port'] ?? 6379,
-            $this->config['timeout'] ?? 0,
-            $this->config['reserved'] ?? null,
-            $this->config['retryInterval'] ?? null,
-            $this->config['readTimeout'] ?? 0
-        );
+        $hp = $this->config['hashProvider'] ?? MurmurHash3Provider::class;
+        $this->hashProvider = new $hp();
+
+        $timeout = $this->config['timeout'] ?? 0;
+        $reserved = $this->config['reserved'] ?? null;
+        $retryInterval = $this->config['retryInterval'] ?? null;
+        $readTimeout = $this->config['readTimeout'] ?? 0;
+
+        foreach ($this->config['hosts'] as $host) {
+            TypeAssert::array($host, " 'hosts' config must be array");
+            TypeAssert::integer($host['token'], " empty value 'hosts -> token' ");
+            TypeAssert::string($host['host'], " empty value 'hosts -> host' ");
+
+            $redis = new Redis();
+
+            if ($this->strictTokenRing) {
+                $redis->$connect(
+                    $host['host'],
+                    $host['port'] ?? 6379,
+                    $timeout,
+                    $reserved,
+                    $retryInterval,
+                    $readTimeout
+                );
+            }
+
+            $this->redis[$host['host']] = $redis;
+
+            $this->hosts[$host['host']] = [
+                'host' => $host['host'],
+                'port' => $host['port'] ?? 6379,
+                'timeout' => $timeout,
+                'reserved' => $reserved,
+                'retryInterval' => $retryInterval,
+                'readTimeout' => $readTimeout
+            ];
+
+            $this->tokens[$host['token']][$host['host']] = $redis;
+        }
+        ksort($this->tokens, SORT_NUMERIC);
     }
 
     /**
      * @throws
      */
     public function __call(string $name, array $arguments): mixed {
+
+        $hash = 0;
+        if (isset($arguments[0]) && is_scalar($arguments[0])) {
+            $hash = $this->hashProvider->getHashInt($arguments[0]);
+        }
+
+        $redisNodes = null;
+        foreach ($this->tokens as $token => $redisHosts) {
+            if ($hash < $token) {
+                break;
+            }
+        }
+
+        if (!$this->strictTokenRing) {
+            foreach ($this->redis as $hostName => $redis) {
+                if (!isset($redisNodes[$hostName])) {
+                    $redisNodes[$hostName] = $redis;
+                }
+            }
+        }
 
         if (substr($name, -6) == '_xwait') {
             $funcName = substr($name, 0, -6);
@@ -276,11 +357,19 @@ class PhpRedisTemplate implements PhpRedisAbstractTemplate {
                 }
 
                 try {
-                    if (!$this->redis->isConnected()) {
-                        $this->reconnect();
+                    $redis = null;
+                    foreach ($redisNodes as $hostName => $redis) {
+                        try {
+                            if (!$redis->isConnected()) {
+                                $this->reconnect($hostName);
+                                break;
+                            }
+                        } catch (Throwable $e) {
+                            self::logDebug($e->getMessage());
+                        }
                     }
 
-                    return $this->redis->$funcName(...$arguments);
+                    return $redis->$funcName(...$arguments);
                 } catch (RedisException $e) {
                     self::logEx($e);
                     usleep($waitMs);
@@ -291,11 +380,15 @@ class PhpRedisTemplate implements PhpRedisAbstractTemplate {
             }
         }
 
-        if (!$this->redis->isConnected()) {
-            $this->reconnect();
+        $redis = null;
+        foreach ($redisNodes as $hostName => $redis) {
+            if (!$redis->isConnected()) {
+                $this->reconnect($hostName);
+                break;
+            }
         }
 
-        return $this->redis->$name(...$arguments);
+        return $redis->$name(...$arguments);
     }
 
 

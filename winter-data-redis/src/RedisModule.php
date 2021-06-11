@@ -10,6 +10,7 @@ use dev\winterframework\data\redis\phpredis\PhpRedisArrayTemplate;
 use dev\winterframework\data\redis\phpredis\PhpRedisClusterTemplate;
 use dev\winterframework\data\redis\phpredis\PhpRedisSentinelTemplate;
 use dev\winterframework\data\redis\phpredis\PhpRedisTemplate;
+use dev\winterframework\data\redis\phpredis\PhpRedisTokenTemplate;
 use dev\winterframework\exception\BeansException;
 use dev\winterframework\exception\ModuleException;
 use dev\winterframework\stereotype\Module;
@@ -36,6 +37,7 @@ class RedisModule implements WinterModule {
         $this->buildRedisArrays($config, $ctx, $ctxData);
         $this->buildRedisClusters($config, $ctx, $ctxData);
         $this->buildRedisSentinel($config, $ctx, $ctxData);
+        $this->buildRedisTokenBased($config, $ctx, $ctxData);
     }
 
     protected function buildRedisSingles(
@@ -181,5 +183,40 @@ class RedisModule implements WinterModule {
         }
     }
 
+    protected function buildRedisTokenBased(
+        array $config,
+        ApplicationContext $ctx,
+        ApplicationContextData $ctxData
+    ): void {
+
+        if (!isset($config['phpredis.tokens']) || !is_array($config['phpredis.tokens'])) {
+            return;
+        }
+
+        /** @var WinterBeanProviderContext $beanProvider */
+        $beanProvider = $ctxData->getBeanProvider();
+
+        $i = 0;
+        foreach ($config['phpredis.tokens'] as $dataConfig) {
+            TypeAssert::notEmpty('name', $dataConfig['name'], "Redis 'tokens' missing name attribute");
+
+            if ($ctx->hasBeanByName($dataConfig['name'])) {
+                throw new BeansException("Bean already exist with name '" . $dataConfig['name']
+                    . "' Redis 'tokens' name conflicts with other bean");
+            }
+
+            $tpl = new PhpRedisTokenTemplate($dataConfig);
+            $tpl->ping();
+            $beanProvider->registerInternalBean(
+                $tpl,
+                PhpRedisTokenTemplate::class,
+                ($i == 0),
+                $dataConfig['name'],
+                true
+            );
+
+            $i++;
+        }
+    }
 
 }

@@ -2,11 +2,6 @@
 
 namespace dev\winterframework\data\redis\phpredis;
 
-use dev\winterframework\util\log\Wlf4p;
-use Redis;
-use RedisException;
-use Throwable;
-
 /**
  * @method mixed acl(mixed $subcmd, array $args)
  * @method mixed append(string $key, mixed $value)
@@ -239,64 +234,5 @@ use Throwable;
  * @method mixed zSize(string $key)
  * @method mixed zUnion(string $key, array $keys, array $weights, mixed $aggregate)
  */
-class PhpRedisTemplate implements PhpRedisAbstractTemplate {
-    use Wlf4p;
-
-    private Redis $redis;
-
-    public function __construct(private array $config) {
-        $this->redis = new Redis();
-        $this->reconnect();
-    }
-
-    private function reconnect(): void {
-        $connect = isset($this->config['persistence']) && $this->config['persistence'] ? 'pconnect' : 'connect';
-
-        $this->redis->$connect(
-            $this->config['host'],
-            $this->config['port'] ?? 6379,
-            $this->config['timeout'] ?? 0,
-            $this->config['reserved'] ?? null,
-            $this->config['retryInterval'] ?? null,
-            $this->config['readTimeout'] ?? 0
-        );
-    }
-
-    /**
-     * @throws
-     */
-    public function __call(string $name, array $arguments): mixed {
-
-        if (substr($name, -6) == '_xwait') {
-            $funcName = substr($name, 0, -6);
-            $waitMs = 0;
-            while (1) {
-                if ($waitMs < 10000000) {
-                    $waitMs += 200000;
-                }
-
-                try {
-                    if (!$this->redis->isConnected()) {
-                        $this->reconnect();
-                    }
-
-                    return $this->redis->$funcName(...$arguments);
-                } catch (RedisException $e) {
-                    self::logEx($e);
-                    usleep($waitMs);
-                } catch (Throwable $e) {
-                    self::logEx($e);
-                    throw $e;
-                }
-            }
-        }
-
-        if (!$this->redis->isConnected()) {
-            $this->reconnect();
-        }
-
-        return $this->redis->$name(...$arguments);
-    }
-
-
+interface PhpRedisAbstractTemplate {
 }

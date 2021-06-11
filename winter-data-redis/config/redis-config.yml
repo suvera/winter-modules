@@ -42,3 +42,22 @@ phpredis:
                     read_timeout: 0.5
                     algorithm: sha256
                     distributor: dist_func
+    tokens:
+        -   name: beanUniqueName123
+            hosts:
+                -   host: 1270.0.0.1,
+                    port: 6371
+                    token: 1431655765
+                -   host: 1270.0.0.1,
+                    port: 6372
+                    token: 2863311530
+                -   host: 1270.0.0.1,
+                    port: 6373
+                    token: 4294967295
+            persistence: true
+            strictTokenRing: false
+            timeout: 0
+            retryInterval:
+            reserved:
+            readTimeout: 0,
+            hashProvider: dev\winterframework\util\hash\MurmurHash3Provider

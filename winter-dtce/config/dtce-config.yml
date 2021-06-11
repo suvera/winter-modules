@@ -1,0 +1,5 @@
+tasks:
+    -   name: abcd
+        storageHandler: a
+        executionHandler: a
+        maxWorkers: 10
