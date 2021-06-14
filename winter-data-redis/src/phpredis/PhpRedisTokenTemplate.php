@@ -246,19 +246,21 @@ class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
     use Wlf4p;
 
     /**
-     * @var Redis[]
+     * @var Redis[][]
      */
-    private array $redis = [];
-    private array $tokens = [];
+    protected array $redis = [];
     /**
      * @var Redis[][]
      */
+    private array $tokens = [];
     private array $hosts = [];
     private bool $strictTokenRing = false;
     private HashProvider $hashProvider;
+    protected int $idleTimeout = 0;
 
     public function __construct(private array $config) {
         $this->redis = [];
+        $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
         $this->init();
     }
 
@@ -266,59 +268,50 @@ class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
         $connect = isset($this->config['persistence']) && $this->config['persistence'] ? 'pconnect' : 'connect';
         $host = $this->hosts[$hostName];
 
-        $this->redis[$hostName]->$connect(
+        $redis = new Redis();
+
+        $redis->$connect(
             $host['host'],
-            $host['port'] ?? 6379,
+            $host['port'],
             $host['timeout'],
             $host['reserved'],
             $host['retryInterval'],
             $host['readTimeout']
         );
+
+        $this->redis[$host['host']] = [
+            'lastAccessTime' => time(),
+            'lastIdleCheck' => time(),
+            'conn' => $redis
+        ];
     }
 
     private function init(): void {
         TypeAssert::array($this->config['hosts'], " 'hosts' config must be array");
         $this->strictTokenRing = $this->config['strictTokenRing'] ?? false;
-        $connect = isset($this->config['persistence']) && $this->config['persistence'] ? 'pconnect' : 'connect';
-
         $hp = $this->config['hashProvider'] ?? MurmurHash3Provider::class;
         $this->hashProvider = new $hp();
 
-        $timeout = $this->config['timeout'] ?? 0;
-        $reserved = $this->config['reserved'] ?? null;
-        $retryInterval = $this->config['retryInterval'] ?? null;
-        $readTimeout = $this->config['readTimeout'] ?? 0;
+        $this->config['timeout'] = $this->config['timeout'] ?? 0;
+        $this->config['reserved'] = $this->config['reserved'] ?? null;
+        $this->config['retryInterval'] = $this->config['retryInterval'] ?? null;
+        $this->config['readTimeout'] = $this->config['readTimeout'] ?? 0;
 
         foreach ($this->config['hosts'] as $host) {
             TypeAssert::array($host, " 'hosts' config must be array");
             TypeAssert::integer($host['token'], " empty value 'hosts -> token' ");
             TypeAssert::string($host['host'], " empty value 'hosts -> host' ");
 
-            $redis = new Redis();
-
-            if ($this->strictTokenRing) {
-                $redis->$connect(
-                    $host['host'],
-                    $host['port'] ?? 6379,
-                    $timeout,
-                    $reserved,
-                    $retryInterval,
-                    $readTimeout
-                );
-            }
-
-            $this->redis[$host['host']] = $redis;
-
             $this->hosts[$host['host']] = [
                 'host' => $host['host'],
                 'port' => $host['port'] ?? 6379,
-                'timeout' => $timeout,
-                'reserved' => $reserved,
-                'retryInterval' => $retryInterval,
-                'readTimeout' => $readTimeout
+                'timeout' => $this->config['timeout'],
+                'reserved' => $this->config['reserved'],
+                'retryInterval' => $this->config['retryInterval'],
+                'readTimeout' => $this->config['readTimeout']
             ];
 
-            $this->tokens[$host['token']][$host['host']] = $redis;
+            $this->tokens[$host['token']][$host['host']] = $host['host'];
         }
         ksort($this->tokens, SORT_NUMERIC);
     }
@@ -327,13 +320,12 @@ class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
      * @throws
      */
     public function __call(string $name, array $arguments): mixed {
-
         $hash = 0;
         if (isset($arguments[0]) && is_scalar($arguments[0])) {
             $hash = $this->hashProvider->getHashInt($arguments[0]);
         }
 
-        $redisNodes = null;
+        $redisHosts = null;
         foreach ($this->tokens as $token => $redisHosts) {
             if ($hash < $token) {
                 break;
@@ -341,9 +333,9 @@ class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
         }
 
         if (!$this->strictTokenRing) {
-            foreach ($this->redis as $hostName => $redis) {
-                if (!isset($redisNodes[$hostName])) {
-                    $redisNodes[$hostName] = $redis;
+            foreach ($this->hosts as $hostName => $config) {
+                if (!isset($redisHosts[$hostName])) {
+                    $redisHosts[$hostName] = $hostName;
                 }
             }
         }
@@ -356,23 +348,29 @@ class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
                     $waitMs += 200000;
                 }
 
+                $redis = null;
+                $hostName = null;
                 try {
-                    $redis = null;
-                    foreach ($redisNodes as $hostName => $redis) {
+                    foreach ($redisHosts as $hostName) {
                         try {
-                            if (!$redis->isConnected()) {
+                            if (!isset($this->redis[$hostName]) || !$this->redis[$hostName]['conn']->isConnected()) {
                                 $this->reconnect($hostName);
-                                break;
                             }
+                            $redis = $this->redis[$hostName]['conn'];
+                            break;
                         } catch (Throwable $e) {
                             self::logDebug($e->getMessage());
                         }
                     }
 
-                    return $redis->$funcName(...$arguments);
+                    $value = $redis->$funcName(...$arguments);
+                    $this->redis[$hostName]['lastAccessTime'] = time();
+
+                    return $value;
                 } catch (RedisException $e) {
                     self::logEx($e);
                     usleep($waitMs);
+                    unset($this->redis[$hostName]);
                 } catch (Throwable $e) {
                     self::logEx($e);
                     throw $e;
@@ -381,15 +379,42 @@ class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
         }
 
         $redis = null;
-        foreach ($redisNodes as $hostName => $redis) {
-            if (!$redis->isConnected()) {
+        $hostName = null;
+        foreach ($redisHosts as $hostName) {
+            if (!isset($this->redis[$hostName]) || !$this->redis[$hostName]['conn']->isConnected()) {
                 $this->reconnect($hostName);
-                break;
             }
+            $redis = $this->redis[$hostName]['conn'];
+            break;
         }
 
-        return $redis->$name(...$arguments);
+        try {
+            $value = $redis->$name(...$arguments);
+        } catch (RedisException $e) {
+            self::logDebug($e->getMessage());
+            unset($this->redis[$hostName]);
+            $this->reconnect($hostName);
+            $redis = $this->redis[$hostName]['conn'];
+            $value = $redis->$name(...$arguments);
+        }
+        $this->redis[$hostName]['lastAccessTime'] = time();
+        return $value;
     }
 
+    public function checkIdleConnection(): void {
+
+        foreach ($this->redis as $hostName => $data) {
+            if ($data['lastAccessTime'] == 0 || $this->idleTimeout == 0) {
+                continue;
+            }
+
+            if ((time() - $data['lastAccessTime']) < $this->idleTimeout) {
+                continue;
+            }
+
+            $data['conn']->close();
+            unset($this->redis[$hostName]);
+        }
+    }
 
 }

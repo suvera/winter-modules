@@ -1,10 +1,12 @@
 <?php
 declare(strict_types=1);
 
-
 namespace dev\winterframework\data\redis\phpredis;
 
+use dev\winterframework\util\log\Wlf4p;
 use RedisArray;
+use RedisException;
+use Throwable;
 
 /**
  * @method mixed bgsave()
@@ -240,17 +242,60 @@ use RedisArray;
  * @method mixed zUnion(string $key, array $keys, array $weights, mixed $aggregate)
  */
 class PhpRedisArrayTemplate implements PhpRedisAbstractTemplate {
+    use PhpRedisTrait;
+    use Wlf4p;
 
-    private RedisArray $redis;
+    protected ?RedisArray $redis;
 
     public function __construct(private array $config) {
+        $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
+        $this->lastAccessTime = time();
+        $this->lastIdleCheck = time();
+    }
+
+    protected function reConnect(): void {
         $this->redis = new RedisArray(
             $this->config['hosts'],
             $this->config['options'] ? $this->config['options'][0] : []
         );
     }
 
+    /**
+     * @throws
+     */
     public function __call(string $name, array $arguments): mixed {
+        $this->lastAccessTime = time();
+
+        if (substr($name, -6) == '_xwait') {
+            $funcName = substr($name, 0, -6);
+            $waitMs = 0;
+            while (1) {
+                $this->lastAccessTime = time();
+                if ($waitMs < 10000000) {
+                    $waitMs += 200000;
+                }
+
+                try {
+                    if (is_null($this->redis)) {
+                        $this->reConnect();
+                    }
+
+                    return $this->redis->$funcName(...$arguments);
+                } catch (RedisException $e) {
+                    self::logEx($e);
+                    usleep($waitMs);
+                    $this->redis = null;
+                } catch (Throwable $e) {
+                    self::logEx($e);
+                    throw $e;
+                }
+            }
+        }
+
+        if (is_null($this->redis)) {
+            $this->reConnect();
+        }
+
         return $this->redis->$name(...$arguments);
     }
 

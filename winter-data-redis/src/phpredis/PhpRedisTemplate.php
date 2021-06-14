@@ -241,15 +241,20 @@ use Throwable;
  */
 class PhpRedisTemplate implements PhpRedisAbstractTemplate {
     use Wlf4p;
+    use PhpRedisTrait;
 
-    private Redis $redis;
+    protected ?Redis $redis;
 
     public function __construct(private array $config) {
-        $this->redis = new Redis();
+        $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
         $this->reconnect();
     }
 
     private function reconnect(): void {
+        $this->lastAccessTime = time();
+        $this->lastIdleCheck = time();
+
+        $this->redis = new Redis();
         $connect = isset($this->config['persistence']) && $this->config['persistence'] ? 'pconnect' : 'connect';
 
         $this->redis->$connect(
@@ -266,24 +271,27 @@ class PhpRedisTemplate implements PhpRedisAbstractTemplate {
      * @throws
      */
     public function __call(string $name, array $arguments): mixed {
+        $this->lastAccessTime = time();
 
         if (substr($name, -6) == '_xwait') {
             $funcName = substr($name, 0, -6);
             $waitMs = 0;
             while (1) {
+                $this->lastAccessTime = time();
                 if ($waitMs < 10000000) {
                     $waitMs += 200000;
                 }
 
                 try {
-                    if (!$this->redis->isConnected()) {
-                        $this->reconnect();
+                    if (is_null($this->redis) || !$this->redis->isConnected()) {
+                        $this->reConnect();
                     }
 
                     return $this->redis->$funcName(...$arguments);
                 } catch (RedisException $e) {
                     self::logEx($e);
                     usleep($waitMs);
+                    $this->reConnect();
                 } catch (Throwable $e) {
                     self::logEx($e);
                     throw $e;
@@ -291,12 +299,17 @@ class PhpRedisTemplate implements PhpRedisAbstractTemplate {
             }
         }
 
-        if (!$this->redis->isConnected()) {
-            $this->reconnect();
+        if (is_null($this->redis) || !$this->redis->isConnected()) {
+            $this->reConnect();
+        } else {
+            try {
+                return $this->redis->$name(...$arguments);
+            } catch (RedisException $e) {
+                self::logDebug($e->getMessage());
+                $this->reconnect();
+            }
         }
 
         return $this->redis->$name(...$arguments);
     }
-
-
 }

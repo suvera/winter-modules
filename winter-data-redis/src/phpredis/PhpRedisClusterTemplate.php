@@ -6,6 +6,7 @@ namespace dev\winterframework\data\redis\phpredis;
 
 use dev\winterframework\util\log\Wlf4p;
 use RedisCluster;
+use RedisException;
 use Throwable;
 
 /**
@@ -192,14 +193,27 @@ use Throwable;
  */
 class PhpRedisClusterTemplate implements PhpRedisAbstractTemplate {
     use Wlf4p;
+    use PhpRedisTrait;
 
-    private RedisCluster $redis;
+    protected ?RedisCluster $redis;
 
     public function __construct(private array $config) {
+        $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
+        $this->lastAccessTime = time();
+        $this->lastIdleCheck = time();
         $this->reConnect();
     }
 
+    /**
+     * @throws
+     */
     public function __call(string $name, array $arguments): mixed {
+        $this->lastAccessTime = time();
+
+        if (is_null($this->redis)) {
+            $this->reConnect();
+        }
+
         try {
             return $this->redis->$name(...$arguments);
         } catch (Throwable $e) {
@@ -209,15 +223,22 @@ class PhpRedisClusterTemplate implements PhpRedisAbstractTemplate {
                 $funcName = substr($name, 0, -6);
                 $waitMs = 0;
                 while (1) {
+                    $this->lastAccessTime = time();
                     if ($waitMs < 10000000) {
                         $waitMs += 200000;
                     }
 
                     try {
+                        if (is_null($this->redis)) {
+                            $this->reConnect();
+                        }
                         return $this->redis->$funcName(...$arguments);
-                    } catch (Throwable $e) {
+                    } catch (RedisException $e) {
                         self::logEx($e);
                         usleep($waitMs);
+                    } catch (Throwable $e) {
+                        self::logEx($e);
+                        break;
                     }
                 }
             }
@@ -228,6 +249,8 @@ class PhpRedisClusterTemplate implements PhpRedisAbstractTemplate {
     }
 
     protected function reConnect(): void {
+        $this->lastAccessTime = time();
+
         $this->redis = new RedisCluster(
             null,
             $this->config['hosts'],

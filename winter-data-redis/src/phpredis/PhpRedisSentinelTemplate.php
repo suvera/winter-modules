@@ -20,7 +20,7 @@ use RedisSentinel;
  */
 class PhpRedisSentinelTemplate {
 
-    private RedisSentinel $redis;
+    protected RedisSentinel $redis;
 
     public function __construct(private array $config) {
         $this->redis = new RedisSentinel(

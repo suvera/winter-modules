@@ -13,6 +13,7 @@ use dev\winterframework\data\redis\phpredis\PhpRedisTemplate;
 use dev\winterframework\data\redis\phpredis\PhpRedisTokenTemplate;
 use dev\winterframework\exception\BeansException;
 use dev\winterframework\exception\ModuleException;
+use dev\winterframework\io\timer\IdleCheckRegistry;
 use dev\winterframework\stereotype\Module;
 use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\log\Wlf4p;
@@ -52,6 +53,8 @@ class RedisModule implements WinterModule {
 
         /** @var WinterBeanProviderContext $beanProvider */
         $beanProvider = $ctxData->getBeanProvider();
+        /** @var IdleCheckRegistry $idleCheck */
+        $idleCheck = $ctx->beanByClass(IdleCheckRegistry::class);
 
         $i = 0;
         foreach ($config['phpredis.singles'] as $dataConfig) {
@@ -71,6 +74,7 @@ class RedisModule implements WinterModule {
                 $dataConfig['name'],
                 true
             );
+            $idleCheck->register([$tpl, 'checkIdleConnection']);
 
             $i++;
         }
@@ -88,6 +92,8 @@ class RedisModule implements WinterModule {
 
         /** @var WinterBeanProviderContext $beanProvider */
         $beanProvider = $ctxData->getBeanProvider();
+        /** @var IdleCheckRegistry $idleCheck */
+        $idleCheck = $ctx->beanByClass(IdleCheckRegistry::class);
 
         $i = 0;
         foreach ($config['phpredis.arrays'] as $dataConfig) {
@@ -107,6 +113,7 @@ class RedisModule implements WinterModule {
                 $dataConfig['name'],
                 true
             );
+            $idleCheck->register([$tpl, 'checkIdleConnection']);
 
             $i++;
         }
@@ -123,6 +130,8 @@ class RedisModule implements WinterModule {
 
         /** @var WinterBeanProviderContext $beanProvider */
         $beanProvider = $ctxData->getBeanProvider();
+        /** @var IdleCheckRegistry $idleCheck */
+        $idleCheck = $ctx->beanByClass(IdleCheckRegistry::class);
 
         $i = 0;
         foreach ($config['phpredis.clusters'] as $dataConfig) {
@@ -142,6 +151,7 @@ class RedisModule implements WinterModule {
                 $dataConfig['name'],
                 true
             );
+            $idleCheck->register([$tpl, 'checkIdleConnection']);
 
             $i++;
         }
@@ -195,6 +205,8 @@ class RedisModule implements WinterModule {
 
         /** @var WinterBeanProviderContext $beanProvider */
         $beanProvider = $ctxData->getBeanProvider();
+        /** @var IdleCheckRegistry $idleCheck */
+        $idleCheck = $ctx->beanByClass(IdleCheckRegistry::class);
 
         $i = 0;
         foreach ($config['phpredis.tokens'] as $dataConfig) {
@@ -214,6 +226,7 @@ class RedisModule implements WinterModule {
                 $dataConfig['name'],
                 true
             );
+            $idleCheck->register([$tpl, 'checkIdleConnection']);
 
             $i++;
         }
