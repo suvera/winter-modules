@@ -26,6 +26,10 @@ class KafkaModule implements WinterModule {
             throw new ModuleException("KafkaModule requires *rdkafka* extension in PHP runtime");
         }
 
+        if (!extension_loaded('swoole')) {
+            throw new ModuleException("KafkaModule requires *swoole* extension in PHP runtime");
+        }
+
         $this->addBeanComponent($ctx, $ctxData, KafkaServiceImpl::class);
     }
 

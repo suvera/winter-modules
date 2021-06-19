@@ -95,6 +95,7 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
 
             /** @noinspection PhpUnusedLocalVariableInspection */
             $firstTime = false;
+            //\Co\System::sleep(0.2); //200000);
         }
     }
 

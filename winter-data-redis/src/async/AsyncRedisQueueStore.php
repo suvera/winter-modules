@@ -1,14 +1,12 @@
 <?php
+/** @noinspection PhpUndefinedMethodInspection */
 declare(strict_types=1);
 
 namespace dev\winterframework\data\redis\async;
 
 use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\data\redis\phpredis\PhpRedisAbstractTemplate;
-use dev\winterframework\data\redis\phpredis\PhpRedisArrayTemplate;
-use dev\winterframework\data\redis\phpredis\PhpRedisClusterTemplate;
-use dev\winterframework\data\redis\phpredis\PhpRedisTemplate;
-use dev\winterframework\data\redis\phpredis\PhpRedisTokenTemplate;
+use dev\winterframework\data\redis\util\RedisUtil;
 use dev\winterframework\util\async\AsyncQueueRecord;
 use dev\winterframework\util\async\AsyncQueueStore;
 use dev\winterframework\util\log\Wlf4p;
@@ -31,19 +29,7 @@ class AsyncRedisQueueStore implements AsyncQueueStore {
 
         $redisBean = $this->ctx->getPropertyStr('winter.task.async.queueStorage.redisBean', '');
 
-        if ($redisBean) {
-            $this->redis = $this->ctx->beanByName($redisBean);
-        } else {
-            if ($ctx->hasBeanByClass(PhpRedisClusterTemplate::class)) {
-                $this->redis = $this->ctx->beanByClass(PhpRedisClusterTemplate::class);
-            } else if ($ctx->hasBeanByClass(PhpRedisArrayTemplate::class)) {
-                $this->redis = $this->ctx->beanByClass(PhpRedisArrayTemplate::class);
-            } else if ($ctx->hasBeanByClass(PhpRedisTokenTemplate::class)) {
-                $this->redis = $this->ctx->beanByClass(PhpRedisTokenTemplate::class);
-            } else {
-                $this->redis = $this->ctx->beanByClass(PhpRedisTemplate::class);
-            }
-        }
+        $this->redis = RedisUtil::getRedisBean($this->ctx, $redisBean);
 
         $this->queueName = $appId . '-' . self::PREFIX . 'work-' . $this->workerId;
         $this->counterName = $appId . '-' . self::PREFIX . 'counter-' . $this->workerId;
