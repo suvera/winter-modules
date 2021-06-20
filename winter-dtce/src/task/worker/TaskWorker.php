@@ -5,7 +5,6 @@ namespace dev\winterframework\dtce\task\worker;
 
 use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\dtce\task\storage\TaskIOStorageHandler;
-use dev\winterframework\io\stream\OutputStream;
 
 interface TaskWorker {
 
@@ -13,8 +12,8 @@ interface TaskWorker {
         ApplicationContext $ctx,
         int $workerId,
         array $taskDef,
-        TaskIOStorageHandler $storageHandler
+        TaskIOStorageHandler $storage
     );
 
-    public function work(mixed $input, OutputStream $output): void;
+    public function work(mixed $input): TaskOutput;
 }

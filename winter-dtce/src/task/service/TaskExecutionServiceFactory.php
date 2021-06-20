@@ -5,9 +5,8 @@ namespace dev\winterframework\dtce\task\service;
 
 use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\dtce\exception\DtceException;
-use dev\winterframework\stereotype\Component;
+use dev\winterframework\dtce\task\server\TaskServer;
 
-#[Component]
 class TaskExecutionServiceFactory {
 
     /**
@@ -17,13 +16,15 @@ class TaskExecutionServiceFactory {
 
     public function __construct(
         protected ApplicationContext $ctx,
-        protected array $config
+        protected array $config,
+        protected TaskServer $taskServer
     ) {
 
         $tasks = $this->config['tasks'] ?? [];
         foreach ($tasks as $task) {
             $this->taskExServices[$task['name']] = new TaskExecutionServiceImpl(
                 $this->ctx,
+                $this->taskServer,
                 $task,
                 $this->config
             );

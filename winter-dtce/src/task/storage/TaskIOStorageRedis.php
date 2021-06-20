@@ -26,7 +26,7 @@ class TaskIOStorageRedis implements TaskIOStorageHandler {
 
         $redisBean = $this->taskDef['storage.redis.bean'] ?? '';
 
-        $this->ttl = $this->taskDef['storage.redis.ttl'] ?? 14400;
+        $this->ttl = $this->taskDef['storage.redis.ttl'] ?? self::GC_TIME;
 
         $this->redis = RedisUtil::getRedisBean($this->ctx, $redisBean);
     }
@@ -43,6 +43,10 @@ class TaskIOStorageRedis implements TaskIOStorageHandler {
 
     public function put(int|string $dataId, string $data): void {
         $this->redis->set(self::PREFIX . $dataId, $data, $this->ttl);
+    }
+
+    public function delete(int|string $dataId): void {
+        $this->redis->del(self::PREFIX . $dataId);
     }
 
 }

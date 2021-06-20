@@ -78,5 +78,8 @@ class TaskIoTable implements PpaEntity, TaskIoStorageEntity {
         return null;
     }
 
+    public function getDateCreatedColumn(): string {
+        return 'CREATED_ON';
+    }
 
 }

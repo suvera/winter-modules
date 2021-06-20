@@ -6,6 +6,8 @@ namespace dev\winterframework\dtce\task\enity;
 interface TaskIoStorageEntity {
     public function getIdColumn(): string;
 
+    public function getDateCreatedColumn(): string;
+
     public function setId(string $id): void;
 
     public function getId(): ?string;

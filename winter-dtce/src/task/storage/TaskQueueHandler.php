@@ -8,7 +8,12 @@ use dev\winterframework\dtce\task\TaskObject;
 
 interface TaskQueueHandler {
 
-    public function __construct(ApplicationContext $ctx, array $config, array $dtceConfig);
+    public function __construct(
+        ApplicationContext $ctx,
+        TaskIOStorageHandler $storage,
+        array $config,
+        array $dtceConfig
+    );
 
     public function taskName(): string;
 

@@ -1,10 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace dev\winterframework\dtce\task\service;
+namespace dev\winterframework\dtce\task;
 
 use dev\winterframework\dtce\task\storage\TaskIOStorageHandler;
-use dev\winterframework\dtce\task\TaskStatus;
 use dev\winterframework\io\stream\InputStream;
 
 class TaskResult {

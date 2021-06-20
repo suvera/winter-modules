@@ -97,4 +97,8 @@ class TaskQueueTable implements PpaEntity, TaskQueueEntity {
         return 'CREATED_ON';
     }
 
+    public function getDateCreatedColumn(): string {
+        return 'CREATED_ON';
+    }
+
 }

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace dev\winterframework\dtce\task\service;
+namespace dev\winterframework\dtce\task;
 
 class JobResult {
 

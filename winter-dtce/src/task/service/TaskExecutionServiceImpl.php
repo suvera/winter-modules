@@ -6,34 +6,29 @@ namespace dev\winterframework\dtce\task\service;
 use Co\System;
 use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\dtce\exception\DtceException;
-use dev\winterframework\dtce\task\server\CommandStatus;
+use dev\winterframework\dtce\task\Job;
+use dev\winterframework\dtce\task\JobResult;
+use dev\winterframework\dtce\task\server\TaskServer;
 use dev\winterframework\dtce\task\storage\TaskIOStorageHandler;
-use dev\winterframework\dtce\task\TaskCommand;
+use dev\winterframework\dtce\task\TaskObject;
+use dev\winterframework\dtce\task\TaskResult;
 use dev\winterframework\dtce\task\TaskStatus;
 use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\log\Wlf4p;
 use Ramsey\Uuid\Uuid;
-use Swoole\Client;
 
 class TaskExecutionServiceImpl implements TaskExecutionService {
     use Wlf4p;
-
-    protected Client $client;
 
     protected TaskIOStorageHandler $storage;
 
     public function __construct(
         protected ApplicationContext $ctx,
+        protected TaskServer $taskServer,
         protected array $taskDef,
         protected array $dtceConfig
     ) {
-        $this->client = new Client(SWOOLE_TCP | SWOOLE_KEEP);
-        $clientSettings = $this->dtceConfig['client.settings'][0] ?? [];
-        if ($clientSettings) {
-            $this->client->set($clientSettings);
-        }
-
-        $storageHandler = $this->taskDef['storage.hHandler'] ?? '--NONE--';
+        $storageHandler = $this->taskDef['storage.handler'] ?? '--NONE--';
 
         TypeAssert::objectOfIsA($storageHandler, TaskIOStorageHandler::class,
             'Task Storage Handler must implement ' . TaskIOStorageHandler::class);
@@ -44,20 +39,7 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
         return $this->taskDef['name'];
     }
 
-    protected function initClient(): void {
-        if ($this->client->isConnected()) {
-            return;
-        }
-
-        if (!$this->client->connect('127.0.0.1', $this->dtceConfig['server.port'], -1)) {
-            self::logError('[DTCE] Could not connect to DTCE Task Server');
-            throw new DtceException('Could not connect to DTCE Task Server');
-        }
-    }
-
     public function executeJob(Job $job): JobResult {
-        $this->initClient();
-
         $tasks = $job->getTasks();
 
         $pending = [];
@@ -77,14 +59,14 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
             foreach ($pending as $index => $taskId) {
                 $task = $this->getTask($taskId);
                 if ($task === null) {
-                    throw new DtceException('DTCE Server missing  Task record ' . $taskId);
-                } else if ($task['status'] === TaskStatus::FINISHED
-                    || $task['status'] === TaskStatus::STOPPED
-                    || $task['status'] === TaskStatus::ERRORED
+                    self::logInfo('DTCE Server missing  Task record ' . $taskId);
+                } else if ($task->getStatus() === TaskStatus::FINISHED
+                    || $task->getStatus() === TaskStatus::STOPPED
+                    || $task->getStatus() === TaskStatus::ERRORED
                 ) {
                     $ts = new TaskResult(
-                        $task['status'],
-                        $task['outputId'],
+                        $task->getStatus(),
+                        $task->getOutputId(),
                         $this->storage
                     );
                     $result->addResult($index, $ts);
@@ -100,21 +82,19 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
     }
 
     public function executeTask(mixed $input): TaskResult {
-        $this->initClient();
-
         $taskId = $this->sendTask($input);
 
         while (1) {
             $task = $this->getTask($taskId);
             if ($task === null) {
-                throw new DtceException('DTCE Server missing  Task record ' . $taskId);
-            } else if ($task['status'] === TaskStatus::FINISHED
-                || $task['status'] === TaskStatus::STOPPED
-                || $task['status'] === TaskStatus::ERRORED
+                self::logInfo('DTCE Server missing taskId ' . $taskId);
+            } else if ($task->getStatus() === TaskStatus::FINISHED
+                || $task->getStatus() === TaskStatus::STOPPED
+                || $task->getStatus() === TaskStatus::ERRORED
             ) {
                 return new TaskResult(
-                    $task['status'],
-                    $task['outputId'],
+                    $task->getStatus(),
+                    $task->getOutputId(),
                     $this->storage
                 );
             }
@@ -131,74 +111,43 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
             $this->storage->put($dataId, serialize($input));
         }
 
-        $this->client->send(json_encode([
-            'cmd' => TaskCommand::ADD_TASK,
-            'name' => $this->getTaskName(),
-            'inputId' => $dataId
-        ]));
+        self::logInfo('Sending Task to server ');
 
-        $resp = $this->client->recv();
-        $json = json_decode($resp, true);
+        $task = new TaskObject();
+        $task->setInputId($dataId);
+        $task->setCreatedOn(time());
+        $task->setName($this->getTaskName());
 
-        if (!isset($json['status'])) {
-            throw new DtceException('Could not send task to server ' . $resp);
-        }
-        if ($json['status'] !== CommandStatus::SUCCESS) {
-            throw new DtceException('Server responded error while creating new task ' . $resp);
+        $this->taskServer->addTask($task);
+
+        if (!$task->getId()) {
+            throw new DtceException('Could not create Task on the server');
         }
 
-        return $json['data']['id'];
+        self::logInfo('Task sent to server, TaskId: ' . $task->getId());
+        return $task->getId();
     }
 
     public function addTask(mixed $input): string {
-        $this->initClient();
         return $this->sendTask($input);
     }
 
-    protected function getTask(string $taskId): ?array {
-        $this->client->send(json_encode([
-            'cmd' => TaskCommand::GET_TASK,
-            'name' => $this->getTaskName(),
-            'id' => $taskId
-        ]));
+    protected function getTask(string $taskId): ?TaskObject {
+        $task = $this->taskServer->getTask($this->getTaskName(), $taskId);
 
-        $resp = $this->client->recv();
-        $json = json_decode($resp, true);
-
-        if (!isset($json['status'])) {
-            throw new DtceException('Could not get task status from server ' . $resp);
+        if (!$task) {
+            throw new DtceException('Could not get task status from server ');
         }
-        if ($json['status'] !== CommandStatus::SUCCESS) {
-            return null;
-        }
-
-        return $json['data'];
+        return $task;
     }
 
     public function taskStatus(string $taskId): ?int {
-        $this->initClient();
         $task = $this->getTask($taskId);
-        return $task ? $task['status'] : TaskStatus::UNKNOWN;
+        return $task ? $task->getStatus() : TaskStatus::UNKNOWN;
     }
 
     public function stopTask(string $taskId): void {
-        $this->initClient();
-        $this->doStopTask($taskId);
-    }
-
-    protected function doStopTask(string $taskId): void {
-        $this->client->send(json_encode([
-            'cmd' => TaskCommand::STOP_TASK,
-            'name' => $this->getTaskName(),
-            'id' => $taskId
-        ]));
-
-        $resp = $this->client->recv();
-        $json = json_decode($resp, true);
-
-        if (!isset($json['status'])) {
-            throw new DtceException('Could not stop task on server ' . $resp);
-        }
+        $this->taskServer->stopTask($this->getTaskName(), $taskId);
     }
 
 }

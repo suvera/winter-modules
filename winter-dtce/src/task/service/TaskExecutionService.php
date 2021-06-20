@@ -3,6 +3,10 @@ declare(strict_types=1);
 
 namespace dev\winterframework\dtce\task\service;
 
+use dev\winterframework\dtce\task\Job;
+use dev\winterframework\dtce\task\JobResult;
+use dev\winterframework\dtce\task\TaskResult;
+
 interface TaskExecutionService {
 
     public function getTaskName(): string;

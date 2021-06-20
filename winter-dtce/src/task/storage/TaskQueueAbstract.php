@@ -8,18 +8,17 @@ use dev\winterframework\dtce\exception\DtceException;
 use dev\winterframework\dtce\task\TaskObject;
 use dev\winterframework\dtce\task\TaskStatus;
 use dev\winterframework\type\Queue;
+use dev\winterframework\util\log\Wlf4p;
 use Ramsey\Uuid\Uuid;
-use Swoole\Table;
 
 abstract class TaskQueueAbstract implements TaskQueueHandler {
-    const MAX_RECORDS = 10000;
-
-    protected Table $table;
+    use Wlf4p;
 
     protected Queue $queue;
 
     public function __construct(
         protected ApplicationContext $ctx,
+        protected TaskIOStorageHandler $storage,
         protected array $taskDef,
         protected array $dtceConfig
     ) {
@@ -36,53 +35,58 @@ abstract class TaskQueueAbstract implements TaskQueueHandler {
         ) {
             $this->taskDef['queue.writeTimeoutMs'] = 200;
         }
-        if (!isset($this->taskDef['maxHistory'])
-            || !is_numeric($this->taskDef['maxHistory'])
-            || $this->taskDef['maxHistory'] < 1
-        ) {
-            $this->taskDef['maxHistory'] = self::MAX_RECORDS;
-        }
 
         $this->queue = $this->buildTaskQueue();
-
-        $this->table = new Table($this->taskDef['maxHistory']);
-        $this->table->column('id', Table::TYPE_STRING, 36);
-        $this->table->column('name', Table::TYPE_STRING, 128);
-        $this->table->column('status', Table::TYPE_INT);
-        $this->table->column('createdOn', Table::TYPE_INT);
-        $this->table->column('updatedOn', Table::TYPE_INT);
-        $this->table->column('inputId', Table::TYPE_STRING, 36);
-        $this->table->column('outputId', Table::TYPE_STRING, 36);
-        $this->table->create();
     }
 
     abstract protected function buildTaskQueue(): Queue;
 
+    protected function prepareTaskId(string $taskId): string {
+        return 'task-' . $taskId;
+    }
+
     public function get(string $taskId): ?TaskObject {
-        return $this->table[$taskId] ?? null;
+        $stream = $this->storage->getInputStream($this->prepareTaskId($taskId));
+        if ($stream) {
+            $c = $stream->read();
+            $ret = unserialize($c);
+            if ($ret === false) {
+                self::logError('Could not unserialize ' . $c . ' for taskId ' . $taskId);
+            } else {
+                return $ret;
+            }
+        }
+        return null;
     }
 
     public function delete(string $taskId): void {
-        if (isset($this->table[$taskId])) {
-            $data = $this->table[$taskId];
-            if ($data['status'] != TaskStatus::QUEUED) {
-                $this->table->del($taskId);
-            }
-        }
+        self::logInfo('Deleting task with taskId ' . $taskId);
+        $this->storage->delete($this->prepareTaskId($taskId));
+    }
+
+    protected function saveTask(TaskObject $task): void {
+        $storeId = $this->prepareTaskId($task->getId());
+        $this->storage->put($storeId, serialize($task));
     }
 
     public function taskStatus(string $taskId, int $taskStatus): void {
-        if (isset($this->table[$taskId])) {
-            $this->table[$taskId]['status'] = $taskStatus;
-            $this->table[$taskId]['updatedOn'] = time();
+        $task = $this->get($taskId);
+        if (!$task) {
+            return;
         }
+        $task->setStatus($taskStatus);
+
+        $this->saveTask($task);
     }
 
     public function taskOutput(string $taskId, string $dataId): void {
-        if (isset($this->table[$taskId])) {
-            $this->table[$taskId]['outputId'] = $dataId;
-            $this->table[$taskId]['updatedOn'] = time();
+        $task = $this->get($taskId);
+        if (!$task) {
+            return;
         }
+        $task->setOutputId($dataId);
+
+        $this->saveTask($task);
     }
 
     public function pop(): ?TaskObject {
@@ -90,13 +94,15 @@ abstract class TaskQueueAbstract implements TaskQueueHandler {
         if (!$value) {
             return null;
         }
-        if (!$this->table->exist($value)) {
+        $task = $this->get($value);
+        if (!$task) {
             return null;
         }
-        $data = $this->table[$value];
-        $data['status'] = TaskStatus::RUNNING;
-        $this->table[$value]['status'] = TaskStatus::RUNNING;
-        return TaskObject::fromArray($data);
+
+        $task->setStatus(TaskStatus::RUNNING);
+        $this->saveTask($task);
+
+        return $task;
     }
 
     public function push(TaskObject $task): void {
@@ -104,24 +110,17 @@ abstract class TaskQueueAbstract implements TaskQueueHandler {
             $task->setId(Uuid::uuid4()->toString());
         }
         $task->setStatus(TaskStatus::QUEUED);
-        $this->table[$task->getId()] = $task->jsonSerialize();
+
+        $storeId = $this->prepareTaskId($task->getId());
+        $this->saveTask($task);
+
         $value = $this->queue->add($task->getId(), $this->taskDef['queue.writeTimeoutMs']);
         if (!$value) {
-            unset($this->table[$task->getId()]);
+            $this->storage->delete($storeId);
             throw new DtceException('[DTCE] Task Queue Capacity exceeded');
         }
 
-        $gc = ceil($this->taskDef['maxHistory'] * 0.7);
-        if ($this->table->count() > $gc) {
-            foreach ($this->table as $id => $row) {
-                if (($row['status'] != TaskStatus::QUEUED && $row['status'] != TaskStatus::RUNNING
-                        && (time() - $row['updatedOn']) > 3600)
-                    || (time() - $row['createdOn'] > 86400)
-                ) {
-                    $this->table->del($id);
-                }
-            }
-        }
+        self::logInfo('Task added to store ' . $storeId);
     }
 
     public function taskName(): string {

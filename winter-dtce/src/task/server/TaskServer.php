@@ -5,16 +5,15 @@ namespace dev\winterframework\dtce\task\server;
 
 use Co\System;
 use dev\winterframework\core\context\ApplicationContext;
+use dev\winterframework\core\context\WinterServer;
 use dev\winterframework\dtce\exception\DtceException;
 use dev\winterframework\dtce\task\storage\TaskIOStorageHandler;
 use dev\winterframework\dtce\task\storage\TaskQueueHandler;
-use dev\winterframework\dtce\task\TaskCommand;
 use dev\winterframework\dtce\task\TaskObject;
 use dev\winterframework\dtce\task\TaskStatus;
+use dev\winterframework\dtce\task\worker\output\NullOutput;
+use dev\winterframework\dtce\task\worker\TaskOutput;
 use dev\winterframework\dtce\task\worker\TaskWorker;
-use dev\winterframework\io\stream\FileOutputStream;
-use dev\winterframework\io\stream\OutputStream;
-use dev\winterframework\io\stream\StringOutputStream;
 use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\log\Wlf4p;
 use Ramsey\Uuid\Uuid;
@@ -25,7 +24,6 @@ use Throwable;
 class TaskServer {
     use Wlf4p;
 
-    protected Server $server;
     protected Table $workers;
     protected array $taskWorkers = [];
     protected array $workerTaskMap = [];
@@ -47,24 +45,23 @@ class TaskServer {
 
     public function __construct(
         protected ApplicationContext $ctx,
+        protected WinterServer $wServer,
         protected array $config
     ) {
         $this->checkConfig();
-
-        $this->server = new Server(
-            "0.0.0.0",
-            $this->config['server.port'],
-            SWOOLE_BASE,
-            SWOOLE_SOCK_TCP
-        );
 
         $this->workers = new Table(1000);
         $this->workers->column('id', Table::TYPE_STRING, 36);
         $this->workers->column('name', Table::TYPE_STRING, 128);
         $this->workers->create();
+
+        $this->init();
     }
 
     public function start(): void {
+    }
+
+    protected function init(): void {
         $serverConfig = $this->config['server.settings'][0] ?? [];
         $tasks = $this->config['tasks'] ?? [];
 
@@ -75,8 +72,8 @@ class TaskServer {
             if (strlen($task['name']) > 128) {
                 throw new DtceException('tasks.name must not exceed 128 characters, but ' . $task['name']);
             }
-            $storageHandler = $task['storage.hHandler'] ?? '--NONE--';
-            $queueHandler = $task['queue.'] ?? '--NONE--';
+            $storageHandler = $task['storage.handler'] ?? '--NONE--';
+            $queueHandler = $task['queue.handler'] ?? '--NONE--';
             $workerClass = $task['worker.class'];
 
             TypeAssert::objectOfIsA($storageHandler, TaskIOStorageHandler::class,
@@ -91,8 +88,15 @@ class TaskServer {
             $numWorkers = $task['worker.total'] ?? 1;
 
             $this->taskWorkers[$task['name']] = $numWorkers;
-            $this->taskQueues[$task['name']] = new $queueHandler($this->ctx, $task, $this->config);
             $this->storage[$task['name']] = new $storageHandler($this->ctx, $task);
+
+            $this->taskQueues[$task['name']] = new $queueHandler(
+                $this->ctx,
+                $this->storage[$task['name']],
+                $task,
+                $this->config
+            );
+
 
             $len = $numWorkers + $curWorkerId;
             for (; $curWorkerId < $len; $curWorkerId++) {
@@ -107,29 +111,16 @@ class TaskServer {
             $totalWorkers += $numWorkers;
         }
 
-        $serverConfig['task_worker_num'] = $totalWorkers ?: 0;
+        if ($totalWorkers > 0) {
+            $this->wServer->addServerArg('task_worker_num', $totalWorkers);
+        }
 
-        $this->server->set($serverConfig);
-
-        if ($serverConfig['task_worker_num'] > 0) {
+        if ($totalWorkers > 0) {
             $this->onWorkerStart();
             $this->onWorkerStop();
             $this->onWorkerError();
             $this->onTask();
         }
-        $this->onReceive();
-
-        $this->server->start();
-    }
-
-    protected function createOutput(TaskObject $task): OutputStream {
-        if ($this->config['server.temp.store'] == 'file') {
-            return new FileOutputStream(
-                $this->config['server.temp.path'] . DIRECTORY_SEPARATOR . 'dtce-' . $task->getId() . '.out'
-            );
-        }
-
-        return new StringOutputStream();
     }
 
     protected function createInput(TaskObject $task): mixed {
@@ -162,7 +153,7 @@ class TaskServer {
      * Start workers
      */
     protected function onWorkerStart(): void {
-        $this->server->on('WorkerStart', function (Server $server, int $workerId) {
+        $this->wServer->addEventCallback('WorkerStart', function (Server $server, int $workerId) {
             if ($workerId < $server->setting['worker_num']) {
                 return;
             }
@@ -174,18 +165,21 @@ class TaskServer {
             while (1) {
                 $task = $queue->pop();
                 if ($task) {
+                    self::logInfo("New Task Grabbed by worker($workerId) " . json_encode($task));
                     $this->workers[$workerId] = ['id' => $task->getId(), 'name' => $task->getName()];
 
                     try {
-                        $os = $this->createOutput($task);
-                        $worker->work($this->createInput($task), $os);
-                        $this->storeOutput($task, $os);
+                        $output = $worker->work($this->createInput($task));
+                        $this->storeOutput($task, $output);
                         $this->workerSuccess($workerId);
                     } catch (Throwable $e) {
                         self::logException($e);
                         $this->workerFailed($workerId);
                     }
                 }
+                //else {
+                //self::logInfo("* NO Task for worker($workerId) ");
+                //}
 
                 System::sleep(0.2);
             }
@@ -197,7 +191,7 @@ class TaskServer {
      * Worker Stopped
      */
     protected function onWorkerStop(): void {
-        $this->server->on('WorkerStop', function (Server $server, int $workerId) {
+        $this->wServer->addEventCallback('WorkerStop', function (Server $server, int $workerId) {
             if ($workerId < $server->setting['worker_num']) {
                 return;
             }
@@ -210,7 +204,7 @@ class TaskServer {
      */
     protected function onWorkerError(): void {
 
-        $this->server->on('WorkerError', function (Server $server, int $workerId) {
+        $this->wServer->addEventCallback('WorkerError', function (Server $server, int $workerId) {
             if ($workerId < $server->setting['worker_num']) {
                 return;
             }
@@ -227,7 +221,7 @@ class TaskServer {
                 $this->taskQueues[$task['name']]->taskStatus($task['id'], TaskStatus::ERRORED);
             }
         }
-        $this->workers->del($workerId);
+        $this->workers->del('' . $workerId);
     }
 
     protected function workerSuccess(int $workerId): void {
@@ -239,93 +233,51 @@ class TaskServer {
                 $this->taskQueues[$task['name']]->taskStatus($task['id'], TaskStatus::FINISHED);
             }
         }
-        $this->workers->del($workerId);
+        $this->workers->del(''.$workerId);
     }
 
-    protected function onReceive(): void {
-        $this->server->on('receive', function (Server $server, $fd, $reactorId, $data) {
-            $json = json_decode($data, true);
-            if (!is_array($json)) {
-                self::logError('Invalid Task Command ' . $data);
-                $server->send($fd, json_encode([
-                    'status' => CommandStatus::ERROR,
-                    'error' => 'Invalid Task Command'
-                ]));
-                return;
+    public function addTask(TaskObject $task): bool {
+        try {
+            $this->taskQueues[$task->getName()]->push($task);
+        } catch (Throwable $e) {
+            self::logException($e);
+            return false;
+        }
+        return true;
+    }
+
+    public function stopTask(string $taskName, string $taskId): bool {
+        self::logInfo('Stopping task ' . $taskId);
+        foreach ($this->workers as $workerId => $assign) {
+            if ($assign['id'] == $taskId) {
+                $this->wServer->getServer()->stop(intval($workerId));
+                break;
             }
+        }
+        $this->taskQueues[$taskName]->taskStatus($taskId, TaskStatus::STOPPED);
+        return true;
+    }
 
-            switch ($json['cmd']) {
-                case TaskCommand::ADD_TASK;
-                    self::logInfo('Adding new task ' . $data);
-                    $task = TaskObject::fromArray($json);
-                    try {
-                        $this->taskQueues[$task->getName()]->push($task);
-                        $server->send($fd, json_encode([
-                            'status' => CommandStatus::SUCCESS,
-                            'data' => $task
-                        ]));
-                    } catch (Throwable $e) {
-                        self::logException($e);
-                        $server->send($fd, json_encode([
-                            'status' => CommandStatus::ERROR,
-                            'error' => $e->getMessage()
-                        ]));
-                    }
-                    break;
-
-                case TaskCommand::STOP_TASK;
-                    self::logInfo('Stopping task ' . $data);
-                    foreach ($this->workers as $workerId => $assign) {
-                        if ($assign['id'] == $json['id']) {
-                            $server->stop(intval($workerId));
-                            break;
-                        }
-                    }
-                    $this->taskQueues[$json['name']]->taskStatus($json['id'], TaskStatus::STOPPED);
-                    $server->send($fd, json_encode([
-                        'status' => CommandStatus::SUCCESS,
-                        'data' => 'ACK'
-                    ]));
-                    break;
-
-                case TaskCommand::GET_TASK;
-                    self::logInfo('Read task ' . $data);
-                    $task = $this->taskQueues[$json['name']]->get($json['id']);
-                    if (!$task) {
-                        $server->send($fd, json_encode([
-                            'status' => CommandStatus::ERROR,
-                            'error' => 'No task exist with given id ' . $json['id']
-                        ]));
-                    } else {
-                        $server->send($fd, json_encode([
-                            'status' => CommandStatus::SUCCESS,
-                            'data' => $task
-                        ]));
-                    }
-                    break;
-
-                default:
-                    self::logError('Unknown Task Command ' . $data);
-                    $server->send($fd, json_encode([
-                        'status' => CommandStatus::ERROR,
-                        'error' => 'Unknown Task Command'
-                    ]));
-                    break;
-            }
-        });
+    public function getTask(string $taskName, string $taskId): ?TaskObject {
+        self::logInfo('Read task ' . $taskId);
+        $task = $this->taskQueues[$taskName]->get($taskId);
+        if (!$task) {
+            return null;
+        }
+        return $task;
     }
 
     protected function onTask(): void {
-        $this->server->on('Task', function (Server $server, $threadId, $reactorId, $data) {
+        $this->wServer->addEventCallback('Task', function (Server $server, $threadId, $reactorId, $data) {
         });
     }
 
-    protected function storeOutput(TaskObject $task, OutputStream $os): void {
-        $is = $os->getInputStream();
-        $out = $is->read();
-        if (!strlen($out)) {
+    protected function storeOutput(TaskObject $task, TaskOutput $output): void {
+        if ($output instanceof NullOutput) {
             return;
         }
+        $out = serialize($output->get());
+
         $dataId = Uuid::uuid4()->toString();
         $this->storage[$task->getName()]->put($dataId, $out);
         $this->taskQueues[$task->getName()]->taskOutput($task->getId(), $dataId);
