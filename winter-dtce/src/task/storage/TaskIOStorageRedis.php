@@ -24,9 +24,9 @@ class TaskIOStorageRedis implements TaskIOStorageHandler {
             throw new DtceException('Redis Module is needed to use Redis Queue');
         }
 
-        $redisBean = $this->taskDef['storage.redisBean'] ?? '';
+        $redisBean = $this->taskDef['storage.redis.bean'] ?? '';
 
-        $this->ttl = $this->taskDef['storage.redisTtl'] ?? 14400;
+        $this->ttl = $this->taskDef['storage.redis.ttl'] ?? 14400;
 
         $this->redis = RedisUtil::getRedisBean($this->ctx, $redisBean);
     }

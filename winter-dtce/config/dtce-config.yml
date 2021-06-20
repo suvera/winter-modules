@@ -23,9 +23,34 @@ tasks:
     -   name: abcd
         storage:
             handler: a
+            path: /folder/path
+            pdbc:
+                bean:
+                entity:
+            redis:
+                bean:
+                ttl:
         worker:
             total: 10
             class: b
         queue:
             handler: dev\winterframework\dtce\task\storage\TaskQueueRedis
             capacity: 100
+            readTimeoutMs:
+            writeTimeoutMs:
+            maxHistory:
+            pdbc:
+                bean:
+                entity:
+            redis:
+                bean:
+                key:
+            kafka:
+                bootstrap.servers: 127.0.0.1
+                topic: topic1
+                consumer:
+                    -   auto.commit.interval.ms: 100
+                        auto.commit.enable: true
+                producer:
+                    -   message.max.bytes: 10485760
+                        retries: 5

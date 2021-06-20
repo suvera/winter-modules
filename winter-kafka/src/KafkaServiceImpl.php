@@ -12,8 +12,6 @@ use dev\winterframework\kafka\producer\ProducerConfiguration;
 use dev\winterframework\kafka\producer\ProducerConfigurations;
 use dev\winterframework\stereotype\Autowired;
 use dev\winterframework\util\log\Wlf4p;
-use RuntimeException;
-use Throwable;
 
 class KafkaServiceImpl implements KafkaService {
     use Wlf4p;
@@ -34,86 +32,6 @@ class KafkaServiceImpl implements KafkaService {
         $this->consumers = new ConsumerConfigurations();
     }
 
-    protected static function sendMessage(
-        ProducerConfiguration $producer,
-        string $producerOrName,
-        mixed $message,
-        mixed $key,
-        ?callable $onSuccess = null,
-        ?callable $onFailed = null
-    ) {
-        try {
-            $topic = $producer->getTopicObject();
-
-            self::logInfo("messaged produced to " . $topic->getName());
-            $topic->produce(RD_KAFKA_PARTITION_UA, 0, $message, $key);
-            $producer->getRawProducer()->poll(0);
-
-            $result = null;
-            for ($flushRetries = 0; $flushRetries < 10; $flushRetries++) {
-                $result = $producer->getRawProducer()->flush(10000);
-                if (RD_KAFKA_RESP_ERR_NO_ERROR === $result) {
-                    break;
-                }
-            }
-
-            if (RD_KAFKA_RESP_ERR_NO_ERROR !== $result) {
-                if ($onFailed != null) {
-                    $onFailed($producerOrName, $message, $key);
-                }
-                throw new RuntimeException('Was unable to flush to kafka, messages might be lost!');
-            } else {
-
-                if ($onSuccess != null) {
-                    $onSuccess($producer, $message, $key);
-                }
-            }
-
-        } catch (Throwable $e) {
-            self::logException($e);
-            $producer->getRawProducer()->purge(RD_KAFKA_PURGE_F_QUEUE);
-
-            if ($onFailed != null) {
-                $onFailed($producerOrName, $message, $key);
-            }
-
-            throw new KafkaException($e->getMessage(), 0, $e);
-        }
-    }
-
-    protected static function sendMessageInTransaction(
-        ProducerConfiguration $producer,
-        string $producerOrName,
-        mixed $message,
-        mixed $key,
-        ?callable $onSuccess = null,
-        ?callable $onFailed = null
-    ) {
-
-        try {
-            $topic = $producer->getTopicObject();
-
-            $producer->getRawProducer()->initTransactions(10000);
-            $producer->getRawProducer()->beginTransaction();
-
-            $topic->produce(RD_KAFKA_PARTITION_UA, 0, $message, $key);
-            $producer->getRawProducer()->poll(0);
-
-            $producer->getRawProducer()->commitTransaction(10000);
-
-            if ($onSuccess != null) {
-                $onSuccess($producer, $message, $key);
-            }
-
-        } catch (Throwable $e) {
-            self::logException($e);
-
-            if ($onFailed != null) {
-                $onFailed($producerOrName, $message, $key);
-            }
-        }
-
-    }
 
     public function produce(
         string|ProducerConfiguration $producerOrName,
@@ -127,13 +45,12 @@ class KafkaServiceImpl implements KafkaService {
             $producer = $this->producers[$producerOrName];
         } else {
             $producer = $producerOrName;
-            $producerOrName = $producer->getName();
         }
 
         if ($producer->isTransactionEnabled()) {
-            self::sendMessageInTransaction($producer, $producerOrName, $message, $key);
+            KafkaUtil::sendMessageInTransaction($producer, $message, $key);
         } else {
-            self::sendMessage($producer, $producerOrName, $message, $key);
+            KafkaUtil::sendMessage($producer, $message, $key);
         }
 
         return true;
@@ -155,12 +72,12 @@ class KafkaServiceImpl implements KafkaService {
             $producer = $producerOrName;
         }
 
-        go(function () use ($producer, $producerOrName, $message, $key, $onSuccess, $onFailed) {
+        go(function () use ($producer, $message, $key, $onSuccess, $onFailed) {
 
             if ($producer->isTransactionEnabled()) {
-                self::sendMessageInTransaction($producer, $producerOrName, $message, $key, $onSuccess, $onFailed);
+                KafkaUtil::sendMessageInTransaction($producer, $message, $key, $onSuccess, $onFailed);
             } else {
-                self::sendMessage($producer, $producerOrName, $message, $key, $onSuccess, $onFailed);
+                KafkaUtil::sendMessage($producer, $message, $key, $onSuccess, $onFailed);
             }
 
         });

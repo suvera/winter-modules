@@ -17,13 +17,13 @@ class TaskQueueRedis extends TaskQueueAbstract {
             throw new DtceException('Redis Module is needed to use Redis Queue');
         }
 
-        $redisBean = $this->taskDef['queue.redisBean'] ?? '';
-        if (!isset($this->taskDef['queue.name']) || !$this->taskDef['queue.name']) {
-            $this->taskDef['queue.name'] = self::PREFIX . hash('sha256', $this->taskName());
+        $redisBean = $this->taskDef['queue.redis.bean'] ?? '';
+        if (!isset($this->taskDef['queue.redis.key']) || !$this->taskDef['queue.redis.key']) {
+            $this->taskDef['queue.redis.key'] = self::PREFIX . hash('sha256', $this->taskName());
         }
 
         $redis = RedisUtil::getRedisBean($this->ctx, $redisBean);
-        return new RedisQueue($redis, $this->taskDef['queue.name'], $this->taskDef['queue.capacity']);
+        return new RedisQueue($redis, $this->taskDef['queue.redis.key'], $this->taskDef['queue.capacity']);
     }
 
 }

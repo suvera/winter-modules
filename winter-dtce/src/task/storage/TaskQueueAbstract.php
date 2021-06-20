@@ -24,9 +24,24 @@ abstract class TaskQueueAbstract implements TaskQueueHandler {
         protected array $dtceConfig
     ) {
         $this->taskDef['queue.capacity'] = $this->taskDef['queue.capacity'] ?? 1;
-        $this->taskDef['queue.readTimeoutMs'] = $this->taskDef['queue.readTimeoutMs'] ?? 200;
-        $this->taskDef['queue.writeTimeoutMs'] = $this->taskDef['queue.writeTimeoutMs'] ?? 200;
-        $this->taskDef['maxHistory'] = $this->taskDef['maxHistory'] ?? self::MAX_RECORDS;
+        if (!isset($this->taskDef['queue.readTimeoutMs'])
+            || !is_numeric($this->taskDef['queue.readTimeoutMs'])
+            || $this->taskDef['queue.readTimeoutMs'] <= 0
+        ) {
+            $this->taskDef['queue.readTimeoutMs'] = 200;
+        }
+        if (!isset($this->taskDef['queue.writeTimeoutMs'])
+            || !is_numeric($this->taskDef['queue.writeTimeoutMs'])
+            || $this->taskDef['queue.writeTimeoutMs'] <= 0
+        ) {
+            $this->taskDef['queue.writeTimeoutMs'] = 200;
+        }
+        if (!isset($this->taskDef['maxHistory'])
+            || !is_numeric($this->taskDef['maxHistory'])
+            || $this->taskDef['maxHistory'] < 1
+        ) {
+            $this->taskDef['maxHistory'] = self::MAX_RECORDS;
+        }
 
         $this->queue = $this->buildTaskQueue();
 

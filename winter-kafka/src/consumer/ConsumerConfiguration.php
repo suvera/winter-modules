@@ -55,6 +55,7 @@ class ConsumerConfiguration {
     private array $config = [];
     private string $name = 'unnamed-group';
     private array $topics = [];
+    private string $topic = '';
     private int $workerNum = 1;
     private string $workerClass = '';
     private array $transientExceptions = [];
@@ -78,6 +79,10 @@ class ConsumerConfiguration {
             } else {
                 $this->config[$key] = $value;
             }
+        }
+
+        if ($this->topic) {
+            $this->topics[] = $this->topic;
         }
     }
 
