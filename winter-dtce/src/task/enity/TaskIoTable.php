@@ -15,7 +15,7 @@ use dev\winterframework\util\DateUtil;
 class TaskIoTable implements PpaEntity, TaskIoStorageEntity {
     use PpaEntityTrait;
 
-    #[Column(name: "ID", length: 36, id: true)]
+    #[Column(name: "ID", length: 48, id: true)]
     private string $id;
 
     #[Column(name: "TASK_NAME")]

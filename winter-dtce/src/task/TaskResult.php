@@ -4,9 +4,11 @@ declare(strict_types=1);
 namespace dev\winterframework\dtce\task;
 
 use dev\winterframework\dtce\task\storage\TaskIOStorageHandler;
-use dev\winterframework\io\stream\InputStream;
+use dev\winterframework\dtce\task\worker\TaskOutput;
 
 class TaskResult {
+    protected ?TaskOutput $data = null;
+    protected bool $dataSet = false;
 
     public function __construct(
         protected int $status,
@@ -23,11 +25,23 @@ class TaskResult {
         return $this->status == TaskStatus::FINISHED;
     }
 
-    public function getResult(): ?InputStream {
+    public function getResult(): ?TaskOutput {
+        $this->dataSet = true;
         if (!$this->dataId) {
-            return null;
+            return $this->data;
         }
-        return $this->storage->getInputStream($this->dataId);
+
+        $stream = $this->storage->getInputStream($this->dataId);
+        $data = $stream->read();
+
+        /** @var TaskOutput|false $obj */
+        $obj = unserialize($data);
+
+        if ($obj !== false) {
+            $this->data = $obj;
+        }
+
+        return $this->data;
     }
 
 }

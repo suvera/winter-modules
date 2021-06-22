@@ -14,6 +14,8 @@ interface TaskQueueEntity {
     public function getOrderByColumn(): string;
 
     public function getDateCreatedColumn(): string;
+    
+    public function getTaskNameColumn(): ?string;
 
     public function getId(): string;
 

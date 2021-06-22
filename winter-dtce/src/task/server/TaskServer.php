@@ -51,7 +51,7 @@ class TaskServer {
         $this->checkConfig();
 
         $this->workers = new Table(1000);
-        $this->workers->column('id', Table::TYPE_STRING, 36);
+        $this->workers->column('id', Table::TYPE_STRING, 48);
         $this->workers->column('name', Table::TYPE_STRING, 128);
         $this->workers->create();
 
@@ -62,12 +62,10 @@ class TaskServer {
     }
 
     protected function init(): void {
-        $serverConfig = $this->config['server.settings'][0] ?? [];
         $tasks = $this->config['tasks'] ?? [];
 
         $totalWorkers = 0;
-        $serverConfig['worker_num'] = $serverConfig['worker_num'] ?? 1;
-        $curWorkerId = $serverConfig['worker_num'];
+        $curWorkerId = $this->wServer->getServerArg('worker_num') ?? 0;
         foreach ($tasks as $task) {
             if (strlen($task['name']) > 128) {
                 throw new DtceException('tasks.name must not exceed 128 characters, but ' . $task['name']);
@@ -137,16 +135,6 @@ class TaskServer {
     }
 
     protected function checkConfig(): void {
-        if ($this->config['server.temp.store'] == 'file') {
-            $this->config['server.temp.path'] = rtrim($this->config['server.temp.path'], '/');
-            $written = file_put_contents(
-                $this->config['server.temp.path'] . DIRECTORY_SEPARATOR . 'dtce-temp.txt',
-                'DTCE'
-            );
-            if ($written === false) {
-                throw new DtceException('Could not write to temp folder ' . $this->config['server.temp.path']);
-            }
-        }
     }
 
     /**
@@ -233,7 +221,7 @@ class TaskServer {
                 $this->taskQueues[$task['name']]->taskStatus($task['id'], TaskStatus::FINISHED);
             }
         }
-        $this->workers->del(''.$workerId);
+        $this->workers->del('' . $workerId);
     }
 
     public function addTask(TaskObject $task): bool {
@@ -259,7 +247,6 @@ class TaskServer {
     }
 
     public function getTask(string $taskName, string $taskId): ?TaskObject {
-        self::logInfo('Read task ' . $taskId);
         $task = $this->taskQueues[$taskName]->get($taskId);
         if (!$task) {
             return null;
@@ -276,9 +263,9 @@ class TaskServer {
         if ($output instanceof NullOutput) {
             return;
         }
-        $out = serialize($output->get());
+        $out = serialize($output);
 
-        $dataId = Uuid::uuid4()->toString();
+        $dataId = 'out-' . Uuid::uuid4()->toString();
         $this->storage[$task->getName()]->put($dataId, $out);
         $this->taskQueues[$task->getName()]->taskOutput($task->getId(), $dataId);
     }

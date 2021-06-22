@@ -86,4 +86,16 @@ class KafkaQueue implements Queue {
         return null;
     }
 
+    public function isUnbounded(): bool {
+        return true;
+    }
+
+    public function size(): int {
+        return PHP_INT_MAX;
+    }
+
+    public function isCountable(): bool {
+        return false;
+    }
+
 }

@@ -22,9 +22,8 @@ modules:
 
 - [Apache Kafka](winter-kafka/)
 - [Redis](winter-data-redis/)
+- [Distributed Task Computing Engine](winter-dtce/)
 - Cassandra 
 - Elastic Search 
 - MongoDB
-- LDAP
 - Security
-- SOAP Web Services

@@ -41,31 +41,32 @@ abstract class TaskQueueAbstract implements TaskQueueHandler {
 
     abstract protected function buildTaskQueue(): Queue;
 
-    protected function prepareTaskId(string $taskId): string {
-        return 'task-' . $taskId;
-    }
-
     public function get(string $taskId): ?TaskObject {
-        $stream = $this->storage->getInputStream($this->prepareTaskId($taskId));
-        if ($stream) {
-            $c = $stream->read();
-            $ret = unserialize($c);
-            if ($ret === false) {
-                self::logError('Could not unserialize ' . $c . ' for taskId ' . $taskId);
-            } else {
-                return $ret;
+        $n = 3;
+        while ($n > 0) {
+            $stream = $this->storage->getInputStream($taskId);
+            if ($stream) {
+                $c = $stream->read();
+                $ret = unserialize($c);
+                if ($ret === false) {
+                    self::logError("Try($n) - " . 'Could not unserialize ' . $c . ' for taskId ' . $taskId);
+                    usleep(200);
+                } else {
+                    return $ret;
+                }
             }
+            $n--;
         }
         return null;
     }
 
     public function delete(string $taskId): void {
         self::logInfo('Deleting task with taskId ' . $taskId);
-        $this->storage->delete($this->prepareTaskId($taskId));
+        $this->storage->delete($taskId);
     }
 
     protected function saveTask(TaskObject $task): void {
-        $storeId = $this->prepareTaskId($task->getId());
+        $storeId = $task->getId();
         $this->storage->put($storeId, serialize($task));
     }
 
@@ -107,11 +108,11 @@ abstract class TaskQueueAbstract implements TaskQueueHandler {
 
     public function push(TaskObject $task): void {
         if ($task->getId() == '') {
-            $task->setId(Uuid::uuid4()->toString());
+            $task->setId('task-' . Uuid::uuid4()->toString());
         }
         $task->setStatus(TaskStatus::QUEUED);
 
-        $storeId = $this->prepareTaskId($task->getId());
+        $storeId = $task->getId();
         $this->saveTask($task);
 
         $value = $this->queue->add($task->getId(), $this->taskDef['queue.writeTimeoutMs']);

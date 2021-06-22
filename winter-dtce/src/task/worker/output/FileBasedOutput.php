@@ -31,6 +31,4 @@ class FileBasedOutput implements TaskOutput {
     public function get(): string {
         return file_get_contents($this->filePath);
     }
-
-
 }

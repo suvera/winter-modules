@@ -25,4 +25,16 @@ class RedisQueue implements Queue {
         return $this->redis->lPop_xwait($this->queueName);
     }
 
+    public function isUnbounded(): bool {
+        return true;
+    }
+
+    public function size(): int {
+        return $this->redis->lLen($this->queueName);
+    }
+
+    public function isCountable(): bool {
+        return true;
+    }
+
 }

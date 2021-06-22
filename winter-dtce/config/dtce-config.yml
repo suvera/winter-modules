@@ -1,24 +1,3 @@
-server:
-    port: 7004
-    temp:
-        store: memory
-        path:
-    settings:
-        -   reactor_num: 4
-            worker_num: 1
-            #task_worker_num: 1
-            #task_tmpdir: /var/dps
-            task_enable_coroutine: true
-            task_use_object: true
-            backlog: 128
-            max_request: 50
-            dispatch_mode: 1
-client:
-    settings:
-        -   timeout: 0.5
-            connect_timeout: 1.0
-            write_timeout: 10.0.
-            read_timeout: 0.5
 tasks:
     -   name: abcd
         storage:

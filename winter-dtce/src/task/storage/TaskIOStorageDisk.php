@@ -7,8 +7,11 @@ use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\dtce\exception\DtceException;
 use dev\winterframework\io\stream\FileInputStream;
 use dev\winterframework\io\stream\InputStream;
+use dev\winterframework\util\log\Wlf4p;
 
 class TaskIOStorageDisk implements TaskIOStorageHandler {
+    use Wlf4p;
+
     protected string $baseDir;
     protected int $maxSize = 1000000;
 
@@ -65,8 +68,10 @@ class TaskIOStorageDisk implements TaskIOStorageHandler {
         $result = file_put_contents($file, '' . $data);
 
         if ($result === false) {
+            self::logError('Could not create file ' . $file);
             throw new DtceException('Could not create file ' . $file);
         }
+        //self::logInfo('File created ' . $file);
     }
 
     public function delete(int|string $dataId): void {

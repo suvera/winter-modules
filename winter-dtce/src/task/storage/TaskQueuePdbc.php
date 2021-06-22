@@ -63,7 +63,23 @@ class TaskQueuePdbc extends TaskQueueAbstract implements Queue {
             $this->entityDef->getOrderByColumn()
         );
 
-        $this->pdbcQueue = new PdbcQueue($this->pdbc, $this->pdbcTable);
+        /**
+         * If the table is the shared table, then you may need to add filter
+         */
+        $filter = '';
+        $binds = [];
+        $nameColumn = $this->entityDef->getTaskNameColumn();
+        if ($nameColumn) {
+            $filter = $nameColumn . ' = :task_name ';
+            $binds['task_name'] = $this->taskName();
+        }
+
+        $this->pdbcQueue = new PdbcQueue(
+            $this->pdbc,
+            $this->pdbcTable,
+            $filter,
+            $binds
+        );
 
         return $this;
     }
@@ -74,16 +90,38 @@ class TaskQueuePdbc extends TaskQueueAbstract implements Queue {
         /** @var TaskQueueEntity $row */
         $row = new $entityClass();
 
+        if ($row instanceof TaskQueueTable) {
+            $row->setTaskName($this->taskName());
+        }
+
         $row->setId(Uuid::uuid4()->toString());
-        $row->setData($item);
+        $row->setData(serialize($item));
         $row->setTaskName($this->taskDef['name']);
         $row->setUpdatedOn(DateUtil::getCurrentDateTime());
 
         return $this->pdbcQueue->add($row);
     }
 
-    public function poll(int $timeoutMs = 0): ?object {
-        return $this->pdbcQueue->poll($timeoutMs);
+    public function poll(int $timeoutMs = 0): mixed {
+        /** @var TaskQueueEntity $entity */
+        $entity = $this->pdbcQueue->poll($timeoutMs);
+
+        if ($entity) {
+            return unserialize($entity->getData());
+        }
+        return null;
+    }
+
+    public function isUnbounded(): bool {
+        return $this->pdbcQueue->isUnbounded();
+    }
+
+    public function size(): int {
+        return $this->pdbcQueue->size();
+    }
+
+    public function isCountable(): bool {
+        return $this->pdbcQueue->isCountable();
     }
 
 }

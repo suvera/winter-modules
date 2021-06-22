@@ -1,0 +1,41 @@
+s3:
+    -   name: abcd
+        version: latest
+        region: us-east-1
+        credentials: # Aws\Credentials\CredentialsInterface, array, bool, callable
+            -   key: a
+                secret: b
+                token: c
+        endpoint: url
+        endpoint_provider: a # see Partition::__invoke()  Aws\Endpoint\EndpointProvider
+        endpoint_discovery: # Aws\EndpointDiscovery\ConfigurationInterface, Aws\CacheInterface or callable
+            -   enabled: false
+                cache_limit: 1000
+        use_path_style_endpoint: true
+        retries: 5
+        bucket_endpoint: true
+        calculate_md5: false
+        s3_us_east_1_regional_endpoint: a
+        use_accelerate_endpoint: true
+        use_arn_region: false # Aws\S3\UseArnRegion\ConfigurationInterface, Aws\CacheInterface, bool, callable
+        use_dual_stack_endpoint: false
+        csm: # Aws\ClientSideMonitoring\ConfigurationInterface|array|callable
+            -   enabled: false
+                host: a
+                port: 31000
+                client_id: c
+        debug: false
+        stats: false
+        validate: true
+        use_aws_shared_config_files: false
+        idempotency_auto_fill: true
+        signature_version: v4
+        scheme: https
+        disable_host_prefix_injection: false
+        http:
+            -   name: value
+        signature_provider: callback # SignatureInterface
+        api_provider: callback # see ApiProvider::__invoke($type, $service, $version)
+        # NOTE: "http_handler" option supersedes "handler" option
+        http_handler: callback # see GuzzleHandler::__invoke(Psr7Request $request, array $options = [])
+        handler: callback

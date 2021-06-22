@@ -9,7 +9,6 @@ use dev\winterframework\core\context\ApplicationContextData;
 use dev\winterframework\core\context\WinterBeanProviderContext;
 use dev\winterframework\core\context\WinterServer;
 use dev\winterframework\dtce\task\server\TaskServer;
-use dev\winterframework\dtce\task\server\TaskServerProcess;
 use dev\winterframework\dtce\task\service\TaskExecutionServiceFactory;
 use dev\winterframework\exception\ModuleException;
 use dev\winterframework\stereotype\Module;
@@ -34,15 +33,7 @@ class DtceModule implements WinterModule {
         $config = $this->retrieveConfiguration($ctx, $ctxData, $moduleDef);
         /** @var WinterServer $wServer */
         $wServer = $ctx->beanByClass(WinterServer::class);
-
-        $port = $config['server.port'] ?? 7004;
-        if (!is_int($port)) {
-            $port = 7004;
-        }
-        $config['server.port'] = $port;
-        $config['server.temp.store'] = $config['server.temp.store'] ?? 'memory';
-        $config['server.temp.path'] = $config['server.temp.path'] ?? sys_get_temp_dir();
-
+        
         $taskServer = new TaskServer(
             $ctx,
             $wServer,
@@ -59,16 +50,6 @@ class DtceModule implements WinterModule {
         $beanFactory = $ctxData->getBeanProvider();
         $beanFactory->registerInternalBean($factory, TaskExecutionServiceFactory::class);
         $beanFactory->registerInternalBean($taskServer, TaskServer::class);
-
-        $ps = new TaskServerProcess(
-            $wServer,
-            $ctx,
-            $taskServer
-        );
-
-        /** @var WinterServer $wServer */
-        $wServer = $ctx->beanByClass(WinterServer::class);
-        $wServer->getServer()->addProcess($ps);
     }
 
 }

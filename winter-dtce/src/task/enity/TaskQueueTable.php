@@ -14,10 +14,10 @@ use dev\winterframework\util\DateUtil;
 class TaskQueueTable implements PpaEntity, TaskQueueEntity {
     use PpaEntityTrait;
 
-    #[Column(name: "ID", length: 36, id: true)]
+    #[Column(name: "ID", length: 48, id: true)]
     private string $id;
 
-    #[Column(name: "TASK_NAME")]
+    #[Column(name: "TASK_NAME", length: 128)]
     private string $taskName;
 
     #[Column(name: "DATA", length: 255)]
@@ -101,4 +101,7 @@ class TaskQueueTable implements PpaEntity, TaskQueueEntity {
         return 'CREATED_ON';
     }
 
+    public function getTaskNameColumn(): ?string {
+        return 'TASK_NAME';
+    }
 }

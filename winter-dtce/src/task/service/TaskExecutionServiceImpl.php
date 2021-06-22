@@ -10,6 +10,7 @@ use dev\winterframework\dtce\task\Job;
 use dev\winterframework\dtce\task\JobResult;
 use dev\winterframework\dtce\task\server\TaskServer;
 use dev\winterframework\dtce\task\storage\TaskIOStorageHandler;
+use dev\winterframework\dtce\task\TaskIds;
 use dev\winterframework\dtce\task\TaskObject;
 use dev\winterframework\dtce\task\TaskResult;
 use dev\winterframework\dtce\task\TaskStatus;
@@ -31,7 +32,7 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
         $storageHandler = $this->taskDef['storage.handler'] ?? '--NONE--';
 
         TypeAssert::objectOfIsA($storageHandler, TaskIOStorageHandler::class,
-            'Task Storage Handler must implement ' . TaskIOStorageHandler::class);
+            'Task Storage Handler "storage.handler" must implement ' . TaskIOStorageHandler::class);
         $this->storage = new $storageHandler($this->ctx, $this->taskDef);
     }
 
@@ -81,6 +82,18 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
         return $result;
     }
 
+    public function addJob(Job $job): TaskIds {
+        $tasks = $job->getTasks();
+        $result = new TaskIds();
+
+        foreach ($tasks as $index => $input) {
+            $taskId = $this->sendTask($input);
+            $result->addResult($index, $taskId);
+        }
+
+        return $result;
+    }
+
     public function executeTask(mixed $input): TaskResult {
         $taskId = $this->sendTask($input);
 
@@ -107,20 +120,18 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
         $dataId = null;
 
         if (!is_null($input)) {
-            $dataId = Uuid::uuid4()->toString();
+            $dataId = 'in-' . Uuid::uuid4()->toString();
             $this->storage->put($dataId, serialize($input));
         }
-
-        self::logInfo('Sending Task to server ');
 
         $task = new TaskObject();
         $task->setInputId($dataId);
         $task->setCreatedOn(time());
         $task->setName($this->getTaskName());
 
-        $this->taskServer->addTask($task);
+        $success = $this->taskServer->addTask($task);
 
-        if (!$task->getId()) {
+        if (!$success || !$task->getId()) {
             throw new DtceException('Could not create Task on the server');
         }
 
@@ -148,6 +159,10 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
 
     public function stopTask(string $taskId): void {
         $this->taskServer->stopTask($this->getTaskName(), $taskId);
+    }
+
+    public function newJob(): Job {
+        return new Job($this->getTaskName());
     }
 
 }
