@@ -20,6 +20,7 @@ class ConsumerConfiguration {
         'enable.auto.commit' => true,
         'auto.commit.interval.ms' => 100,
         'session.timeout.ms' => 9000,
+        'statistics.interval.ms' => 30000,
 
         'auto.offset.reset' => 'earliest', // earliest, smallest, beginning, largest, latest, end, error
 
@@ -58,6 +59,7 @@ class ConsumerConfiguration {
     private string $topic = '';
     private int $workerNum = 1;
     private string $workerClass = '';
+    private string $lagMonitor = ConsumerLagMonitor::class;
     private array $transientExceptions = [];
     private ?RdKafkaConf $conf = null;
     protected KafkaConsumer $rawConsumer;
@@ -128,6 +130,11 @@ class ConsumerConfiguration {
                     throw new KafkaRebalanceException($err);
             }
         });
+
+        if ($this->lagMonitor && is_a($this->lagMonitor, ConsumerStatistics::class, true)) {
+            $lagMonitor = $this->lagMonitor;
+            $this->conf->setStatsCb(new $lagMonitor($this));
+        }
 
         $this->rawConsumer = new KafkaConsumer($this->conf);
     }

@@ -299,17 +299,20 @@ class PhpRedisTemplate implements PhpRedisAbstractTemplate {
             }
         }
 
-        if (is_null($this->redis) || !$this->redis->isConnected()) {
+        $redis = $this->redis;
+        if (is_null($redis) || !$redis->isConnected()) {
             $this->reConnect();
+            $redis = $this->redis;
         } else {
             try {
-                return $this->redis->$name(...$arguments);
+                return $redis->$name(...$arguments);
             } catch (RedisException $e) {
                 self::logDebug($e->getMessage());
                 $this->reconnect();
+                $redis = $this->redis;
             }
         }
 
-        return $this->redis->$name(...$arguments);
+        return $redis->$name(...$arguments);
     }
 }

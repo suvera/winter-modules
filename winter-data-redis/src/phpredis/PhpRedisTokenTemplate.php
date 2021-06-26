@@ -373,7 +373,9 @@ class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
                     unset($this->redis[$hostName]);
                 } catch (Throwable $e) {
                     self::logEx($e);
-                    throw $e;
+                    if (!is_null($redis)) {
+                        throw $e;
+                    }
                 }
             }
         }

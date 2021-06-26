@@ -287,16 +287,20 @@ class PhpRedisArrayTemplate implements PhpRedisAbstractTemplate {
                     $this->redis = null;
                 } catch (Throwable $e) {
                     self::logEx($e);
-                    throw $e;
+                    if (!is_null($this->redis)) {
+                        throw $e;
+                    }
                 }
             }
         }
 
-        if (is_null($this->redis)) {
+        $redis = $this->redis;
+        if (is_null($redis)) {
             $this->reConnect();
+            $redis = $this->redis;
         }
 
-        return $this->redis->$name(...$arguments);
+        return $redis->$name(...$arguments);
     }
 
 }

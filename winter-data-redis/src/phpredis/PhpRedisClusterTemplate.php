@@ -238,7 +238,9 @@ class PhpRedisClusterTemplate implements PhpRedisAbstractTemplate {
                         usleep($waitMs);
                     } catch (Throwable $e) {
                         self::logEx($e);
-                        break;
+                        if (!is_null($this->redis)) {
+                            break;
+                        }
                     }
                 }
             }
