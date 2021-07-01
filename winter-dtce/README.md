@@ -52,13 +52,24 @@ Any executable task will be queued in to the Queue, then processed by the worker
 
 Any Queue implementation must implement [TaskQueueHandler](src/task/storage/TaskQueueHandler.php).
 
-This module provides three implementations out-of-the box
+This module provides four implementations out-of-the box
 
-**1.1. Redis Queue** - dev\winterframework\dtce\task\storage\TaskQueueRedis
+**1.1. Local Queue** - dev\winterframework\dtce\task\storage\TaskQueueShared
+> Make sure `winter.queue.port` is setup in application.yml
+> 
+> This is local to the system only, all processes share same queue.
 
-**1.2. Kafka Queue** - dev\winterframework\dtce\task\storage\TaskQueueKafka
+**1.2. Redis Queue** - dev\winterframework\dtce\task\storage\TaskQueueRedis
 
-**1.3. Pdbc Queue** - dev\winterframework\dtce\task\storage\TaskQueuePdbc
+> Distributed
+
+**1.3. Kafka Queue** - dev\winterframework\dtce\task\storage\TaskQueueKafka
+
+> Distributed
+
+**1.4. Pdbc Queue** - dev\winterframework\dtce\task\storage\TaskQueuePdbc
+
+> Distributed
 
 ## 2. Task Store
 
@@ -70,12 +81,23 @@ This module provides three implementations out-of-the box
 
 **2.1. Disk Store** - dev\winterframework\dtce\task\storage\TaskIOStorageDisk
 
-Note: Local Disks are not distributed, it only works when application is running on Single Node.
-If application is running on multiple nodes, then you need to use NFS, HDFS, GlusterFS, or any distributed file system
+> Note: Local Disks are not distributed, it only works when application is running on Single Node.
+> 
+> If application is running on multiple nodes, then you need to use NFS, HDFS, GlusterFS, or any distributed file system
+
+**2.1. Memory KV Store** - dev\winterframework\dtce\task\storage\TaskIOStorageKvStore
+
+> Make sure `winter.kv.port` is setup in application.yml
+> 
+> This is local to the system only, all processes share same KV store.
 
 **2.2. Redis Store** - dev\winterframework\dtce\task\storage\TaskIOStorageRedis
 
+> Distributed
+
 **2.3. Pdbc Store** - dev\winterframework\dtce\task\storage\TaskIOStoragePdbc
+
+> Distributed
 
 ## 3. Task Worker
 

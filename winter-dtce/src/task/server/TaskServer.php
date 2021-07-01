@@ -150,10 +150,13 @@ class TaskServer {
             $worker = $this->taskWorkerMap[$taskName][$workerId];
             $queue = $this->taskQueues[$taskName];
 
+            sleep(5);
+            self::logInfo('Worker started listening Queue');
+
             while (1) {
                 $task = $queue->pop();
                 if ($task) {
-                    self::logInfo("New Task Grabbed by worker($workerId) " . json_encode($task));
+                    self::logInfo("New Task Grabbed by worker($workerId) " . $task->getId());
                     $this->workers[$workerId] = ['id' => $task->getId(), 'name' => $task->getName()];
 
                     try {
@@ -169,7 +172,8 @@ class TaskServer {
                 //self::logInfo("* NO Task for worker($workerId) ");
                 //}
 
-                System::sleep(0.2);
+                //System::sleep(0.2);
+                usleep(200000);
             }
         });
 
