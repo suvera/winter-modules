@@ -14,6 +14,7 @@ use dev\winterframework\dtce\task\TaskIds;
 use dev\winterframework\dtce\task\TaskObject;
 use dev\winterframework\dtce\task\TaskResult;
 use dev\winterframework\dtce\task\TaskStatus;
+use dev\winterframework\io\metrics\prometheus\PrometheusMetricRegistry;
 use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\log\Wlf4p;
 use Ramsey\Uuid\Uuid;
@@ -22,6 +23,8 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
     use Wlf4p;
 
     protected TaskIOStorageHandler $storage;
+
+    protected PrometheusMetricRegistry $registry;
 
     public function __construct(
         protected ApplicationContext $ctx,
@@ -36,12 +39,32 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
         $this->storage = new $storageHandler($this->ctx, $this->taskDef);
     }
 
+    public function getMetrics(): PrometheusMetricRegistry {
+        if (!isset($this->registry)) {
+            $this->registry = $this->ctx->beanByClass(PrometheusMetricRegistry::class);
+            $this->registry->getOrRegisterCounter(
+                'dtce_job_count',
+                'Total Jobs',
+                ['name']
+            );
+            $this->registry->getOrRegisterCounter(
+                'dtce_task_count',
+                'Total Tasks',
+                ['name']
+            );
+        }
+
+        return $this->registry;
+    }
+
     public function getTaskName(): string {
         return $this->taskDef['name'];
     }
 
     public function executeJob(Job $job): JobResult {
         $tasks = $job->getTasks();
+
+        $this->getMetrics()->incr('dtce_job_count', ['name' => $this->getTaskName()]);
 
         $pending = [];
         foreach ($tasks as $index => $input) {
@@ -86,6 +109,8 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
         $tasks = $job->getTasks();
         $result = new TaskIds();
 
+        $this->getMetrics()->incr('dtce_job_count', ['name' => $this->getTaskName()]);
+
         foreach ($tasks as $index => $input) {
             $taskId = $this->sendTask($input);
             $result->addResult($index, $taskId);
@@ -123,6 +148,8 @@ class TaskExecutionServiceImpl implements TaskExecutionService {
             $dataId = 'in-' . Uuid::uuid4()->toString();
             $this->storage->put($dataId, serialize($input));
         }
+
+        $this->getMetrics()->incr('dtce_task_count', ['name' => $this->getTaskName()]);
 
         $task = new TaskObject();
         $task->setInputId($dataId);
