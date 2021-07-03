@@ -1,19 +1,17 @@
-# Winter Boot Module - Redis
+# Winter Boot Module - Security
 
-Winter Redis is a module that provides easy configuration and access to Redis from Winter Boot applications.
-
-
-- RedisTemplate
+Winter Security is a module that provides easy configuration to secure Winter Boot applications.
 
 
 ## Setup
 
-append following code to your application.yml
+Append following code to your application.yml
 
 ```yaml
 
 modules:
-    - module: 'dev\\winterframework\\data\\redis\\RedisModule'
+    - module: 'dev\\winterframework\\data\\redis\\SecurityModule'
       enabled: true
+      configFile: security-config.yml
 
 ```
