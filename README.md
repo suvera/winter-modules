@@ -5,17 +5,11 @@ Winter boot [https://github.com/suvera/winter-boot](https://github.com/suvera/wi
 
 ## Setup
 
-Example setup (append in application.yml )
+```shell
 
-```yaml
+composer require suvera/winter-modules
 
-modules:
-    - module: 'dev\\winterframework\\data\\redis\\RedisModule'
-      enabled: true
-      
-    - module: 'dev\\winterframework\\data\\abc\\AbcModule'
-      enabled: true
-
+# Check module specific documentation below to enable
 ```
 
 ## Modules
@@ -23,6 +17,7 @@ modules:
 - [Apache Kafka](winter-kafka/)
 - [Redis](winter-data-redis/)
 - [Distributed Task Computing Engine](winter-dtce/)
+- [S3 Like Storage](winter-s3/)
 - Cassandra 
 - Elastic Search 
 - MongoDB
