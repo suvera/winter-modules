@@ -6,6 +6,7 @@ namespace dev\winterframework\kafka;
 
 use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\core\context\WinterServer;
+use dev\winterframework\io\process\ProcessType;
 use dev\winterframework\io\process\ServerWorkerProcess;
 use dev\winterframework\kafka\consumer\Consumer;
 use dev\winterframework\kafka\consumer\ConsumerConfiguration;
@@ -35,9 +36,17 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
         $this->workerId = $workerId;
     }
 
-    protected function run(): void {
+    public function getProcessType(): int {
+        return ProcessType::OTHER;
+    }
 
+    public function getProcessId(): string {
+        return 'kafka-consumer-' . $this->workerId;
+    }
+
+    protected function run(): void {
         $topics = $this->consumer->getTopics();
+        
         if (!$topics) {
             self::logInfo('No topics found for consumer ' . $this->consumer->getName());
             return;

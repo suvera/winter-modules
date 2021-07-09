@@ -84,11 +84,8 @@ class KafkaServiceImpl implements KafkaService {
     }
 
     protected function startConsumer(ConsumerConfiguration $consumer, int $i): void {
-        //$consumer->getRawConsumer()->subscribe($consumer->getTopics());
-        //self::logInfo('Consumer Subscribed ... ');
-
         $ps = new KafkaWorkerProcess($this->wServer, $this->appCtx, $consumer, $i + 1);
-        $this->wServer->getServer()->addProcess($ps);
+        $this->wServer->addProcess($ps);
     }
 
     public function beginConsume(): void {

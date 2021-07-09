@@ -93,23 +93,7 @@ Consumer worker must implement [Consumer](src/consumer/Consumer.php) interface.
 #### Example consumer worker
 
 ```phpt
-
-class TestKafkaConsumer implements Consumer {
-    use Wlf4p;
-
-    private ConsumerConfiguration $config;
-
-    public function __construct(ConsumerConfiguration $config) {
-        $this->config = $config;
-    }
-
-    public function getGroupName(): string {
-        return $this->config->getName();
-    }
-
-    public function getConfiguration(): ConsumerConfiguration {
-        return $this->config;
-    }
+class TestKafkaConsumer extends AbstractConsumer {
 
     public function consume(ConsumerRecords $records): void {
 
@@ -137,5 +121,4 @@ class TestKafkaConsumer implements Consumer {
     }
 
 }
-
 ```
