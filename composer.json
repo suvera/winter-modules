@@ -2,16 +2,17 @@
     "name": "suvera/winter-modules",
     "description": "Winter Boot modules",
     "type": "library",
+    "keywords": "php8 framework",
+    "homepage": "https://suvera.github.io/",
     "config": {
         "platform": {
             "php": "8.0"
         }
     },
-    "license": "Apache",
+    "license": "MIT",
     "authors": [
         {
-            "name": "Suvera",
-            "email": "rana.ram@gmail.com"
+            "name": "Suvera"
         }
     ],
     "autoload": {
