@@ -19,6 +19,9 @@ class KafkaQueue implements Queue {
     ) {
     }
 
+    /**
+     * @throws
+     */
     public function add(mixed $item, int $timeoutMs = 0): bool {
         $key = Uuid::uuid4()->toString();
         if ($this->producer->isTransactionEnabled()) {

@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-
 namespace dev\winterframework\kafka;
 
 use dev\winterframework\core\context\ApplicationContext;
@@ -88,6 +87,7 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
 
                 case RD_KAFKA_RESP_ERR_UNKNOWN_TOPIC_OR_PART:
                 case RD_KAFKA_RESP_ERR__UNKNOWN_TOPIC:
+                case RD_KAFKA_RESP_ERR_TOPIC_EXCEPTION:
                     $err = 'Kafka error ' . $message->err . ': ' . $message->errstr();
                     $err .= ', Consumer: ' . $this->consumer->getName()
                         . ', Topics: ' . json_encode($this->consumer->getTopics());
@@ -99,7 +99,7 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
 
                 default:
                     self::logError('Kafka error ' . $message->err . ': ' . $message->errstr());
-                    throw new KafkaException($message->errstr(), $message->err);
+                    break;
             }
 
             /** @noinspection PhpUnusedLocalVariableInspection */

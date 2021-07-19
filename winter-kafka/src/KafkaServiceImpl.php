@@ -33,6 +33,9 @@ class KafkaServiceImpl implements KafkaService {
     }
 
 
+    /**
+     * @throws
+     */
     public function produce(
         string|ProducerConfiguration $producerOrName,
         mixed $message,
@@ -56,6 +59,9 @@ class KafkaServiceImpl implements KafkaService {
         return true;
     }
 
+    /**
+     * @throws
+     */
     public function produceAsync(
         string|ProducerConfiguration $producerOrName,
         mixed $message,

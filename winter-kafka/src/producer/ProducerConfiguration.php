@@ -58,6 +58,12 @@ class ProducerConfiguration {
         'retries' => null,
         'retry.backoff.ms' => null,
 
+        /**
+         * random             - random distribution
+         * consistent         - CRC32 hash of key (Empty and NULL keys are mapped to single partition)
+         * consistent_random  - CRC32 hash of key (Empty and NULL keys are randomly partitioned)
+         */
+        'partitioner' => 'consistent_random'
     ];
 
     private string $name = '';
@@ -94,6 +100,10 @@ class ProducerConfiguration {
      */
     public function getConfig(): array {
         return $this->config;
+    }
+
+    public function getConfigVal(string $key, mixed $default = null): mixed {
+        return $this->config[$key] ?? $default;
     }
 
     /**
