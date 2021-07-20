@@ -11,7 +11,7 @@ use dev\winterframework\kafka\consumer\Consumer;
 use dev\winterframework\kafka\consumer\ConsumerConfiguration;
 use dev\winterframework\kafka\consumer\ConsumerRecord;
 use dev\winterframework\kafka\consumer\ConsumerRecords;
-use dev\winterframework\kafka\exception\KafkaException;
+use dev\winterframework\util\ExceptionUtils;
 use dev\winterframework\util\log\Wlf4p;
 use RdKafka\KafkaConsumerTopic;
 use RuntimeException;
@@ -45,7 +45,7 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
 
     protected function run(): void {
         $topics = $this->consumer->getTopics();
-        
+
         if (!$topics) {
             self::logInfo('No topics found for consumer ' . $this->consumer->getName());
             return;
@@ -74,7 +74,8 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
                         $message,
                         $this->consumer->getName()
                     );
-                    $worker->consume(ConsumerRecords::ofValues($record));
+                    $records = ConsumerRecords::ofValues($record);
+                    $this->consumerRecords($records, $worker);
                     break;
 
                 case RD_KAFKA_RESP_ERR__PARTITION_EOF:
@@ -142,6 +143,25 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
         } catch (Throwable $e) {
             self::logException($e);
             $this->wServer->shutdown(null, $e);
+        }
+    }
+
+    protected function consumerRecords(ConsumerRecords $records, Consumer $worker): void {
+        $trials = $this->consumer->getRetries();
+        $reTriableExceptions = $this->consumer->getTransientExceptions();
+        $retryWaitMs = $this->consumer->getRetryWaitMs();
+
+        while ($trials > 0) {
+            $trials--;
+            try {
+                $worker->consume($records);
+            } catch (Throwable $e) {
+                self::logException($e);
+                if (ExceptionUtils::inExceptions($e, $reTriableExceptions)) {
+                    usleep($trials * $retryWaitMs * 1000);
+                    continue;
+                }
+            }
         }
     }
 

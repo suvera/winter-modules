@@ -59,6 +59,10 @@ class ConsumerConfiguration {
     private string $topic = '';
     private int $workerNum = 1;
     private string $workerClass = '';
+
+    private int $retries = 1;
+    private int $retryWaitMs = 300;
+
     private string $lagMonitor = ConsumerLagMonitor::class;
     private array $transientExceptions = [];
     private ?RdKafkaConf $conf = null;
@@ -93,6 +97,14 @@ class ConsumerConfiguration {
      */
     public function getConfig(): array {
         return $this->config;
+    }
+
+    public function getRetries(): int {
+        return ($this->retries <= 0) ? 1 : $this->retries;
+    }
+
+    public function getRetryWaitMs(): int {
+        return $this->retryWaitMs;
     }
 
     /**
