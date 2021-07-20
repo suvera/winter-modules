@@ -27,9 +27,16 @@ class ConsumerLagMonitor implements ConsumerStatistics {
         /** @var PrometheusMetricRegistry $metrics */
         $metrics = $this->ctx->beanByClass(PrometheusMetricRegistry::class);
 
+        $name = 'kafka_consumer_lag';
+        $guage = $metrics->getOrRegisterGauge(
+            $name,
+            'Kafka Consumer Lag',
+            ['topic', 'name']
+        );
+
         foreach ($stats['topics'] as $topicName => $topicStats) {
             $sum = 0.0;
-            $name = $this->config->getName() . '_lag';
+
             foreach ($topicStats['partitions'] as $partId => $partStats) {
                 if (!isset($partStats['consumer_lag']) || $partStats['consumer_lag'] < 0) {
                     continue;
@@ -41,12 +48,8 @@ class ConsumerLagMonitor implements ConsumerStatistics {
                 );
                 $sum += $partStats['consumer_lag'];
             }
-            $guage = $metrics->getOrRegisterGauge(
-                $name,
-                $this->config->getName() . ' Consumer Lag',
-                ['topic']
-            );
-            $guage->set($sum, ['topic' => $topicName]);
+
+            $guage->set($sum, ['topic' => $topicName, 'name' => $this->config->getName()]);
         }
     }
 
