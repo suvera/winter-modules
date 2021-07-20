@@ -86,7 +86,7 @@ class KafkaModule implements WinterModule {
             }
 
             $consumerConfig = array_merge($consumerDefaults, $data);
-            $kafkaService->addConsumer(new ConsumerConfiguration($consumerConfig));
+            $kafkaService->addConsumer(new ConsumerConfiguration($consumerConfig, $ctx));
         }
     }
 

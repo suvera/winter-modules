@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace dev\winterframework\kafka\consumer;
 
+use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\kafka\exception\KafkaRebalanceException;
 use dev\winterframework\kafka\KafkaUtil;
 use dev\winterframework\util\log\Wlf4p;
@@ -72,7 +73,7 @@ class ConsumerConfiguration {
      * ConsumerConfiguration constructor.
      * @param array $config
      */
-    public function __construct(array $config) {
+    public function __construct(array $config, protected ApplicationContext $ctx) {
         foreach (self::$defaults as $key => $value) {
             if (isset($value)) {
                 $this->config[$key] = $value;
@@ -145,7 +146,7 @@ class ConsumerConfiguration {
 
         if ($this->lagMonitor && is_a($this->lagMonitor, ConsumerStatistics::class, true)) {
             $lagMonitor = $this->lagMonitor;
-            $this->conf->setStatsCb(new $lagMonitor($this));
+            $this->conf->setStatsCb(new $lagMonitor($this, $this->ctx));
         }
 
         $this->rawConsumer = new KafkaConsumer($this->conf);
