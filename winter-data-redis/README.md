@@ -1,19 +1,12 @@
-# Winter Boot Module - Redis
+# WinterBoot Module - Redis
 
 Winter Data Redis is a module that provides easy configuration and access to Redis from Winter Boot applications.
 
-PHP has two very good libraries that can used to work with Redis.
-
-1. [PhpRedis](https://github.com/phpredis/phpredis) - C Extension
-2. [Predis](https://github.com/predis/predis)  - Pure PHP Implementation
-
-
-We don't want to reinvent the wheel to create another library or even wrappers.
-
-So, this module assumes that you have [PhpRedis](https://github.com/phpredis/phpredis) extension already installed.
-
-
 ## Setup
+
+```shell
+composer require suvera/winter-modules
+```
 
 Append following code to your application.yml
 
@@ -26,6 +19,18 @@ modules:
 
 ```
 
+
+## Implementation
+
+PHP has two very good libraries that can used to work with Redis.
+
+1. [PhpRedis](https://github.com/phpredis/phpredis) - C Extension
+2. [Predis](https://github.com/predis/predis)  - Pure PHP Implementation
+
+
+We don't want to reinvent the wheel to create another library or even wrappers.
+
+So, this module assumes that you have [PhpRedis](https://github.com/phpredis/phpredis) extension already installed.
 
 
 ## Autowired Services

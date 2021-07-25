@@ -5,7 +5,6 @@ namespace dev\winterframework\dtce\task;
 
 use JsonSerializable;
 use Ramsey\Uuid\Uuid;
-use Swoole\Table\Row;
 
 class TaskObject implements JsonSerializable {
 
@@ -27,7 +26,7 @@ class TaskObject implements JsonSerializable {
         ];
     }
 
-    public static function fromArray(array|Row $data): self {
+    public static function fromArray(array $data): self {
         $task = new TaskObject();
 
         $task->name = $data['name'];

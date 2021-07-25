@@ -5,9 +5,12 @@ Winter Kafka is a module that provides easy configuration and access to Kafka fu
 
 ## Setup
 
-1. `This requires *swoole* php extension`
-2. `This requires *rdkafaka* php extension`
+1. This requires `swoole` php extension
+2. This requires `rdkafaka` php extension
 
+```shell
+composer require suvera/winter-modules
+```
 
 To enable Kafka module in applications, append following code to **application.yml**
 

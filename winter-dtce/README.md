@@ -17,6 +17,10 @@ DTCE provides following capabilities
 
 ## Setup
 
+```shell
+composer require suvera/winter-modules
+```
+
 To enable DTCE module in applications, append following code to **application.yml**
 
 ```yaml

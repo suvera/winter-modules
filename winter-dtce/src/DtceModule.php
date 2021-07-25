@@ -25,7 +25,7 @@ class DtceModule implements WinterModule {
             throw new ModuleException("KafkaModule requires *swoole* extension in PHP runtime");
         }
 
-        //$this->addBeanComponent($ctx, $ctxData, KafkaServiceImpl::class);
+        //$this->addBeanComponent($ctx, $ctxData, SomeClass::class);
     }
 
     public function begin(ApplicationContext $ctx, ApplicationContextData $ctxData): void {

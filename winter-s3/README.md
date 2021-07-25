@@ -1,4 +1,4 @@
-# Winter Boot Module - S3
+# WinterBoot Module - S3
 
 Winter S3 is a module that provides easy configuration and access to S3 Object Storage or similar services from Winter
 Boot applications.
@@ -6,6 +6,10 @@ Boot applications.
 - S3Template
 
 ## Setup
+
+```shell
+composer require suvera/winter-modules
+```
 
 Append following code to your application.yml
 

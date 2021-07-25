@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace dev\winterframework\dtce\task\server;
 
-use Co\System;
 use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\core\context\WinterServer;
 use dev\winterframework\dtce\exception\DtceException;
@@ -14,17 +13,17 @@ use dev\winterframework\dtce\task\TaskStatus;
 use dev\winterframework\dtce\task\worker\output\NullOutput;
 use dev\winterframework\dtce\task\worker\TaskOutput;
 use dev\winterframework\dtce\task\worker\TaskWorker;
+use dev\winterframework\io\shm\ShmTable;
 use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\log\Wlf4p;
 use Ramsey\Uuid\Uuid;
 use Swoole\Server;
-use Swoole\Table;
 use Throwable;
 
 class TaskServer {
     use Wlf4p;
 
-    protected Table $workers;
+    protected ShmTable $workers;
     protected array $taskWorkers = [];
     protected array $workerTaskMap = [];
 
@@ -50,10 +49,12 @@ class TaskServer {
     ) {
         $this->checkConfig();
 
-        $this->workers = new Table(1000);
-        $this->workers->column('id', Table::TYPE_STRING, 48);
-        $this->workers->column('name', Table::TYPE_STRING, 128);
-        $this->workers->create();
+        $this->workers = new ShmTable(
+            1000, [
+                ['id', ShmTable::TYPE_STRING, 48],
+                ['name', ShmTable::TYPE_STRING, 128]
+            ]
+        );
 
         $this->init();
     }
@@ -213,7 +214,7 @@ class TaskServer {
                 $this->taskQueues[$task['name']]->taskStatus($task['id'], TaskStatus::ERRORED);
             }
         }
-        $this->workers->del('' . $workerId);
+        $this->workers->delete('' . $workerId);
     }
 
     protected function workerSuccess(int $workerId): void {
@@ -225,7 +226,7 @@ class TaskServer {
                 $this->taskQueues[$task['name']]->taskStatus($task['id'], TaskStatus::FINISHED);
             }
         }
-        $this->workers->del('' . $workerId);
+        $this->workers->delete('' . $workerId);
     }
 
     public function addTask(TaskObject $task): bool {
