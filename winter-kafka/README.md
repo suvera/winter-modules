@@ -5,11 +5,11 @@ Winter Kafka is a module that provides easy configuration and access to Kafka fu
 
 ## Setup
 
-- This requires `swoole` & `rdkafaka` php extensions
+- This requires `swoole` & `rdkafka` php extensions
 
 ```shell
 pecl install swoole
-pecl install rdkafaka
+pecl install rdkafka
 ```
 
 Add modules to your project with composer
