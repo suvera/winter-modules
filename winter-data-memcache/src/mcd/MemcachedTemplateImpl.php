@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace dev\winterframework\data\memcache\mcd;
 
+use Co;
+use dev\winterframework\core\System;
 use dev\winterframework\type\Arrays;
 use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\log\Wlf4p;
@@ -17,8 +19,13 @@ class MemcachedTemplateImpl implements MemcachedTemplate {
     protected int $lastIdleCheck = 0;
     protected int $idleTimeout = 0;
     protected ?Memcached $memcached = null;
+    protected int $startTime;
+    protected mixed $bootUpTimeMs;
 
     public function __construct(private array $config, private bool $lazy = false) {
+        $this->startTime = System::currentTimeMillis();
+        $this->bootUpTimeMs = $this->config['bootUpTimeMs'] ?? 0;
+
         $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
         Arrays::assertKey($this->config, 'servers', 'Invalid Memcached config');
         TypeAssert::array($this->config['servers'], 'servers config value must be array in Memcached config');
@@ -29,6 +36,11 @@ class MemcachedTemplateImpl implements MemcachedTemplate {
     }
 
     private function reconnect(): void {
+
+        if ($this->lazy && $this->bootUpTimeMs > 0 && (System::currentTimeMillis() - $this->startTime) < $this->bootUpTimeMs) {
+            Co::sleep((System::currentTimeMillis() - $this->startTime) / 1000);
+        }
+
         $this->lastAccessTime = time();
         $this->lastIdleCheck = time();
 
@@ -44,6 +56,10 @@ class MemcachedTemplateImpl implements MemcachedTemplate {
                 intval($server['port']),
                 $server['weight'] ?? 0
             );
+        }
+
+        if (isset($this->config['binaryProtocol'])) {
+            $this->memcached->setOption(Memcached::OPT_BINARY_PROTOCOL, boolval($this->config['binaryProtocol']));
         }
     }
 

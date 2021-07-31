@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace dev\winterframework\data\memcache\mc;
 
+use Co;
+use dev\winterframework\core\System;
 use dev\winterframework\type\Arrays;
 use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\log\Wlf4p;
@@ -17,8 +19,13 @@ class MemcacheTemplateImpl implements MemcacheTemplate {
     protected int $lastIdleCheck = 0;
     protected int $idleTimeout = 0;
     protected ?Memcache $memcache = null;
+    protected int $startTime;
+    protected mixed $bootUpTimeMs;
 
     public function __construct(private array $config, private bool $lazy = false) {
+        $this->startTime = System::currentTimeMillis();
+        $this->bootUpTimeMs = $this->config['bootUpTimeMs'] ?? 0;
+
         $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
         Arrays::assertKey($this->config, 'servers', 'Invalid Memcache config');
         TypeAssert::array($this->config['servers'], 'servers config value must be array in Memcache config');
@@ -29,6 +36,10 @@ class MemcacheTemplateImpl implements MemcacheTemplate {
     }
 
     private function reconnect(): void {
+        if ($this->lazy && $this->bootUpTimeMs > 0 && (System::currentTimeMillis() - $this->startTime) < $this->bootUpTimeMs) {
+            Co::sleep((System::currentTimeMillis() - $this->startTime) / 1000);
+        }
+
         $this->lastAccessTime = time();
         $this->lastIdleCheck = time();
 
