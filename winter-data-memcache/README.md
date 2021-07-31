@@ -13,7 +13,7 @@ Append following code to your application.yml
 ```yaml
 
 modules:
-    - module: 'dev\\winterframework\\data\\memcache\\MemcacheModule'
+    - module: 'dev\winterframework\data\memcache\MemcacheModule'
       enabled: true
       configFile: memcache-config.yml
 

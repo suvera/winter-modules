@@ -15,7 +15,7 @@ Append following code to your application.yml
 
 ```yaml
 modules:
-    -   module: 'dev\\winterframework\\s3\\S3Module'
+    -   module: 'dev\winterframework\s3\S3Module'
         enabled: true
         configFile: s3-config.yml
 ```

@@ -10,7 +10,7 @@ Append following code to your application.yml
 ```yaml
 
 modules:
-    - module: 'dev\\winterframework\\data\\redis\\SecurityModule'
+    - module: 'dev\winterframework\data\redis\SecurityModule'
       enabled: true
       configFile: security-config.yml
 

@@ -13,7 +13,7 @@ Append following code to your application.yml
 ```yaml
 
 modules:
-    - module: 'dev\\winterframework\\data\\redis\\RedisModule'
+    - module: 'dev\winterframework\data\redis\RedisModule'
       enabled: true
       configFile: redis-config.yml
 

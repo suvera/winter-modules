@@ -45,12 +45,12 @@ consumers:
     - name: group1-name
       topics: [topic1-name, topic99-name]
       workerNum: 1
-      workerClass: some\\package\\className
+      workerClass: some\package\className
 
     - name: group2-name
       topics: [topic2-name]
       workerNum: 1
-      workerClass: some\\package2\\className2
+      workerClass: some\package2\className2
 
 # Producer configuration
 producers:

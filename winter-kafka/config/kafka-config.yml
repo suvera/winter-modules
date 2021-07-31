@@ -10,13 +10,13 @@ consumers:
     -   name: group1
         topics: [ topic1, topic11 ]
         workerNum: 1
-        workerClass: some\\package\\className
+        workerClass: some\package\className
         auto.commit.interval.ms: 100
 
     -   name: group2
         topics: [ topic2 ]
         workerNum: 1
-        workerClass: some\\package2\\className2
+        workerClass: some\package2\className2
 
 # Producer configuration
 producers:
