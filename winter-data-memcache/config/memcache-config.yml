@@ -1,0 +1,23 @@
+memcache:
+    -   name: bean01
+        idleTimeout: 30
+        timeout: 0
+        retry_interval: 0
+        status: 0
+        servers:
+            -   host: 127.0.0.1
+                port: 11211
+                weight: 0
+
+memcached:
+    -   name: bean02
+        timeout: 0
+        idleTimeout: 30
+        retry_interval: 0
+        status: 0
+        servers:
+            -   host: 127.0.0.1
+                port: 11211
+                weight: 0
+
+

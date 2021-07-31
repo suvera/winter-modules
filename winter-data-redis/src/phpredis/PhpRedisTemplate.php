@@ -243,11 +243,13 @@ class PhpRedisTemplate implements PhpRedisAbstractTemplate {
     use Wlf4p;
     use PhpRedisTrait;
 
-    protected ?Redis $redis;
+    protected ?Redis $redis = null;
 
-    public function __construct(private array $config) {
+    public function __construct(private array $config, private bool $lazy = false) {
         $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
-        $this->reconnect();
+        if (!$this->lazy) {
+            $this->reconnect();
+        }
     }
 
     private function reconnect(): void {

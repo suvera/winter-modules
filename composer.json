@@ -32,6 +32,8 @@
             "test\\winterframework\\data\\mongo\\": "winter-data-mongo/srcTest/",
             "dev\\winterframework\\data\\redis\\": "winter-data-redis/src/",
             "test\\winterframework\\data\\redis\\": "winter-data-redis/srcTest/",
+            "dev\\winterframework\\data\\memcache\\": "winter-data-memcache/src/",
+            "test\\winterframework\\data\\memcache\\": "winter-data-memcache/srcTest/",
             "dev\\winterframework\\kafka\\": "winter-kafka/src/",
             "test\\winterframework\\kafka\\": "winter-kafka/srcTest/",
             "dev\\winterframework\\s3\\": "winter-s3/src/",
@@ -53,5 +55,9 @@
     },
     "require-dev": {
         "kwn/php-rdkafka-stubs": "dev-master"
+    },
+    "suggest": {
+        "ext-memcached": "Needed to support Memcache",
+        "ext-memcache": "Needed to support Memcache"
     }
 }
