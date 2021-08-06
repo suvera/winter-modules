@@ -224,7 +224,7 @@ class TaskServer {
         if (isset($this->workers[$workerId])) {
             $task = $this->workers[$workerId];
             if ($task && $task['id']) {
-                self::logError('[DTCE] task worker finished work, so task '
+                self::logInfo('[DTCE] task worker finished work, so task '
                     . $task['id'] . ' marked Success');
                 $this->taskQueues[$task['name']]->taskStatus($task['id'], TaskStatus::FINISHED);
             }
