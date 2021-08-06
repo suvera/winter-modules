@@ -42,6 +42,8 @@ class TaskServer {
      */
     protected array $storage;
 
+    protected int $totalWorkers = 0;
+
     public function __construct(
         protected ApplicationContext $ctx,
         protected WinterServer $wServer,
@@ -114,6 +116,7 @@ class TaskServer {
             $this->wServer->addServerArg('task_worker_num', $totalWorkers);
         }
 
+        $this->totalWorkers = $totalWorkers;
         if ($totalWorkers > 0) {
             $this->onWorkerStart();
             $this->onWorkerStop();
@@ -273,5 +276,25 @@ class TaskServer {
         $dataId = 'out-' . Uuid::uuid4()->toString();
         $this->storage[$task->getName()]->put($dataId, $out);
         $this->taskQueues[$task->getName()]->taskOutput($task->getId(), $dataId);
+    }
+
+    public function getTotalWorkers(): int {
+        return $this->totalWorkers;
+    }
+
+    public function getTaskTotalWorkers(string $taskName): int {
+        return $this->taskWorkers[$taskName] ?? 0;
+    }
+
+    public function getTaskStorageHandler(string $taskName): ?TaskIOStorageHandler {
+        return $this->storage[$taskName] ?? null;
+    }
+
+    public function getTaskQueueHandler(string $taskName): ?TaskQueueHandler {
+        return $this->taskQueues[$taskName] ?? null;
+    }
+
+    public function getTaskNameForWorkerId(int $workerId): string {
+        return $this->workerTaskMap[$workerId] ?? '';
     }
 }
