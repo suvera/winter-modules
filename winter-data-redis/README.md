@@ -183,5 +183,49 @@ phpredis:
 ```phpt
 #[Autowired]
 private PhpRedisSentinelTemplate $redis;  // This default to "sentinel01"
+```
+
+### 5. PhpRedisTokenTemplate
+
+When dealing with Token based ring topology based Redis Cluster such as [Netflix Dynomite](https://github.com/Netflix/dynomite)
+
+#### Configuration for PhpRedisTokenTemplate (redis-config.yml)
+
+```yaml
+phpredis:
+    tokens:
+        # 1st Cluster
+        -   name: DynomiteCluster01
+            hosts:
+                -   host: 10.1.2.3
+                    port: 7801
+                    token: 4294967295
+                -   host: 10.1.2.4
+                    port: 7801
+                    token: 2863311530
+                -   host: 10.1.2.5
+                    port: 7801
+                    token: 1431655765
+            persistence: false
+            strictTokenRing: false
+            timeout: 0
+            retryInterval:
+            reserved:
+            readTimeout: 0
+            idleTimeout: 300
+            hashProvider: dev\winterframework\util\hash\MurmurHash3Provider
+            
+        # 2nd Cluster
+        -   name: DynomiteCluster02
+            # ...settings here ...
 
 ```
+
+
+#### PHP Example
+
+```phpt
+#[Autowired("DynomiteCluster01")]
+private PhpRedisTokenTemplate $redis;
+```
+
