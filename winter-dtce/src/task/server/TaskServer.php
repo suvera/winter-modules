@@ -13,7 +13,10 @@ use dev\winterframework\dtce\task\TaskStatus;
 use dev\winterframework\dtce\task\worker\output\NullOutput;
 use dev\winterframework\dtce\task\worker\TaskOutput;
 use dev\winterframework\dtce\task\worker\TaskWorker;
+use dev\winterframework\exception\WinterException;
 use dev\winterframework\io\shm\ShmTable;
+use dev\winterframework\reflection\ref\RefKlass;
+use dev\winterframework\reflection\ReflectionUtil;
 use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\log\Wlf4p;
 use Ramsey\Uuid\Uuid;
@@ -26,6 +29,7 @@ class TaskServer {
     protected ShmTable $workers;
     protected array $taskWorkers = [];
     protected array $workerTaskMap = [];
+    protected array $workerTaskMapFlip = [];
 
     /**
      * @var TaskWorker[][]
@@ -35,7 +39,7 @@ class TaskServer {
     /**
      * @var TaskQueueHandler[]
      */
-    protected array $taskQueues;
+    protected array $taskQueues = [];
 
     /**
      * @var TaskIOStorageHandler[]
@@ -89,25 +93,20 @@ class TaskServer {
             $numWorkers = $task['worker.total'] ?? 1;
 
             $this->taskWorkers[$task['name']] = $numWorkers;
-            $this->storage[$task['name']] = new $storageHandler($this->ctx, $task);
-
-            $this->taskQueues[$task['name']] = new $queueHandler(
-                $this->ctx,
-                $this->storage[$task['name']],
-                $task,
-                $this->config
-            );
-
 
             $len = $numWorkers + $curWorkerId;
             for (; $curWorkerId < $len; $curWorkerId++) {
-                $this->taskWorkerMap[$task['name']][$curWorkerId] = new $workerClass(
-                    $this->ctx,
-                    $curWorkerId,
-                    $task,
-                    $this->storage[$task['name']]
-                );
-                $this->workerTaskMap[$curWorkerId] = $task['name'];
+                if (!isset($this->workerTaskMapFlip[$task['name']])) {
+                    $this->workerTaskMapFlip[$task['name']] = [];
+                }
+                $this->workerTaskMapFlip[$task['name']][$curWorkerId] = $curWorkerId;
+                $this->workerTaskMap[$curWorkerId] = [
+                    $task['name'],
+                    $workerClass,
+                    $queueHandler,
+                    $storageHandler,
+                    $task
+                ];
             }
             $totalWorkers += $numWorkers;
         }
@@ -141,6 +140,39 @@ class TaskServer {
     protected function checkConfig(): void {
     }
 
+    protected function initTaskQueueAndStore(string $taskName): void {
+        if (isset($this->taskQueues[$taskName])) {
+            return;
+        }
+
+        $taskWorkerIds = $this->workerTaskMapFlip[$taskName];
+        $workerId = array_key_first($taskWorkerIds);
+        /** @noinspection PhpUnusedLocalVariableInspection */
+        list($taskName, $workerClass, $queueHandler, $storageHandler, $taskDef) = $this->workerTaskMap[$workerId];
+
+        try {
+            $store = ReflectionUtil::createAutoWiredObject(
+                $this->ctx,
+                new RefKlass($storageHandler),
+                $this->ctx,
+                $taskDef
+            );
+            $queue = ReflectionUtil::createAutoWiredObject(
+                $this->ctx,
+                new RefKlass($queueHandler),
+                $this->ctx,
+                $store,
+                $taskDef,
+                $this->config
+            );
+        } catch (Throwable $e) {
+            $this->wServer->shutdown('Could not create a DTCE Store or Queue objects', $e);
+            throw new WinterException('Could not create a DTCE Store or Queue objects');
+        }
+        $this->taskQueues[$taskName] = $queue;
+        $this->storage[$taskName] = $store;
+    }
+
     /**
      * Start workers
      */
@@ -149,20 +181,38 @@ class TaskServer {
             if ($workerId < $server->setting['worker_num']) {
                 return;
             }
+            sleep(5);
 
-            $taskName = $this->workerTaskMap[$workerId];
-            $worker = $this->taskWorkerMap[$taskName][$workerId];
+            /** @noinspection PhpUnusedLocalVariableInspection */
+            list($taskName, $workerClass, $queueHandler, $storageHandler, $taskDef) = $this->workerTaskMap[$workerId];
+
+            $this->initTaskQueueAndStore($taskName);
+
+            try {
+                $worker = ReflectionUtil::createAutoWiredObject(
+                    $this->ctx,
+                    new RefKlass($workerClass),
+                    $this->ctx,
+                    $workerId,
+                    $taskDef,
+                    $this->storage[$taskName]
+                );
+            } catch (Throwable $e) {
+                $this->wServer->shutdown('Could not create a DTCE Worker', $e);
+                throw new WinterException('Could not create a DTCE Worker');
+            }
+            $this->taskWorkerMap[$taskName][$workerId] = $worker;
             $queue = $this->taskQueues[$taskName];
 
-            sleep(5);
             self::logInfo('Worker started listening Queue');
+            $sleepMs = 200000;
 
             while (1) {
                 $task = $queue->pop();
                 if ($task) {
                     self::logInfo("New Task Grabbed by worker($workerId) " . $task->getId());
                     $this->workers[$workerId] = ['id' => $task->getId(), 'name' => $task->getName()];
-
+                    $sleepMs = 200000;
                     try {
                         $output = $worker->work($this->createInput($task));
                         $this->storeOutput($task, $output);
@@ -171,13 +221,16 @@ class TaskServer {
                         self::logException($e);
                         $this->workerFailed($workerId);
                     }
+                } else {
+                    if ($sleepMs >= 20000000) {
+                        $sleepMs = 20000000;
+                    } else {
+                        $sleepMs += 200000;
+                    }
                 }
-                //else {
-                //self::logInfo("* NO Task for worker($workerId) ");
-                //}
 
                 //System::sleep(0.2);
-                usleep(200000);
+                usleep($sleepMs);
             }
         });
 
@@ -214,6 +267,7 @@ class TaskServer {
             if ($task && $task['id']) {
                 self::logError('[DTCE] task worker closed unexpectedly, so task '
                     . $task['id'] . ' marked errored');
+                $this->initTaskQueueAndStore($task['name']);
                 $this->taskQueues[$task['name']]->taskStatus($task['id'], TaskStatus::ERRORED);
             }
         }
@@ -226,6 +280,7 @@ class TaskServer {
             if ($task && $task['id']) {
                 self::logInfo('[DTCE] task worker finished work, so task '
                     . $task['id'] . ' marked Success');
+                $this->initTaskQueueAndStore($task['name']);
                 $this->taskQueues[$task['name']]->taskStatus($task['id'], TaskStatus::FINISHED);
             }
         }
@@ -233,6 +288,7 @@ class TaskServer {
     }
 
     public function addTask(TaskObject $task): bool {
+        $this->initTaskQueueAndStore($task->getName());
         try {
             $this->taskQueues[$task->getName()]->push($task);
         } catch (Throwable $e) {
@@ -244,6 +300,7 @@ class TaskServer {
 
     public function stopTask(string $taskName, string $taskId): bool {
         self::logInfo('Stopping task ' . $taskId);
+        $this->initTaskQueueAndStore($taskName);
         foreach ($this->workers as $workerId => $assign) {
             if ($assign['id'] == $taskId) {
                 $this->wServer->getServer()->stop(intval($workerId));
@@ -255,6 +312,7 @@ class TaskServer {
     }
 
     public function getTask(string $taskName, string $taskId): ?TaskObject {
+        $this->initTaskQueueAndStore($taskName);
         $task = $this->taskQueues[$taskName]->get($taskId);
         if (!$task) {
             return null;
@@ -271,6 +329,7 @@ class TaskServer {
         if ($output instanceof NullOutput) {
             return;
         }
+        $this->initTaskQueueAndStore($task->getName());
         $out = serialize($output);
 
         $dataId = 'out-' . Uuid::uuid4()->toString();
@@ -291,10 +350,11 @@ class TaskServer {
     }
 
     public function getTaskQueueHandler(string $taskName): ?TaskQueueHandler {
+        $this->initTaskQueueAndStore($taskName);
         return $this->taskQueues[$taskName] ?? null;
     }
 
     public function getTaskNameForWorkerId(int $workerId): string {
-        return $this->workerTaskMap[$workerId] ?? '';
+        return $this->workerTaskMap[$workerId][0] ?? '';
     }
 }

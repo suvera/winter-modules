@@ -11,6 +11,8 @@ use dev\winterframework\kafka\consumer\Consumer;
 use dev\winterframework\kafka\consumer\ConsumerConfiguration;
 use dev\winterframework\kafka\consumer\ConsumerRecord;
 use dev\winterframework\kafka\consumer\ConsumerRecords;
+use dev\winterframework\reflection\ref\RefKlass;
+use dev\winterframework\reflection\ReflectionUtil;
 use dev\winterframework\util\ExceptionUtils;
 use dev\winterframework\util\log\Wlf4p;
 use RdKafka\KafkaConsumerTopic;
@@ -61,7 +63,12 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
 
         $workerClass = $this->consumer->getWorkerClass();
         /** @var Consumer $worker */
-        $worker = new $workerClass($this->appCtx, $this->consumer);
+        $worker = ReflectionUtil::createAutoWiredObject(
+            $this->appCtx,
+            new RefKlass($workerClass),
+            $this->appCtx,
+            $this->consumer
+        );
 
         while (true) {
             $firstTime = true;
