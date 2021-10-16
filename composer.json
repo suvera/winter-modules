@@ -51,7 +51,7 @@
         "ext-pcntl": "*",
         "ext-redis": "*",
         "ext-swoole": "*",
-        "aws/aws-sdk-php": "3.185.*"
+        "aws/aws-sdk-php": "3.*"
     },
     "require-dev": {
         "kwn/php-rdkafka-stubs": "dev-master"
