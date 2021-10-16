@@ -68,7 +68,7 @@ class ConsumerConfiguration {
     private string $lagMonitor = ConsumerLagMonitor::class;
     private string $errorCallback = ConsumerErrorCallbackDefault::class;
     private string $logCallback = KafkaLogCallbackDefault::class;
-    private string $rebalanceCallback = KafkaLogCallbackDefault::class;
+    private string $rebalanceCallback = ConsumerRebalanceCallbackDefault::class;
     protected string $offsetCommitCallback = '';
     private array $transientExceptions = [];
     private ?RdKafkaConf $conf = null;
