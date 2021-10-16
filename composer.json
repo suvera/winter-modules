@@ -51,13 +51,14 @@
         "ext-pcntl": "*",
         "ext-redis": "*",
         "ext-swoole": "*",
-        "aws/aws-sdk-php": "^3.184"
+        "aws/aws-sdk-php": "3.185.*"
     },
     "require-dev": {
         "kwn/php-rdkafka-stubs": "dev-master"
     },
     "suggest": {
         "ext-memcached": "Needed to support Memcache",
-        "ext-memcache": "Needed to support Memcache"
+        "ext-memcache": "Needed to support Memcache",
+        "ext-rdkafka": "Needed to support Kafka"
     }
 }
