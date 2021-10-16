@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace dev\winterframework\kafka\producer;
 
+use dev\winterframework\core\context\ApplicationContext;
+use dev\winterframework\kafka\KafkaLogCallback;
+use dev\winterframework\kafka\KafkaLogCallbackDefault;
 use dev\winterframework\kafka\KafkaUtil;
 use dev\winterframework\util\log\Wlf4p;
 use RdKafka\Conf as RdKafkaConf;
@@ -69,6 +72,7 @@ class ProducerConfiguration {
     private string $name = '';
     private string $topic = '';
     protected bool $transactionEnabled = false;
+    private string $logCallback = KafkaLogCallbackDefault::class;
 
     private array $config = [];
     private RdKafkaConf $conf;
@@ -79,7 +83,7 @@ class ProducerConfiguration {
      * ConsumerConfiguration constructor.
      * @param array $config
      */
-    public function __construct(array $config) {
+    public function __construct(array $config, protected ApplicationContext $ctx) {
         foreach (self::$defaults as $key => $value) {
             if (isset($value)) {
                 $this->config[$key] = $value;
@@ -122,11 +126,14 @@ class ProducerConfiguration {
         foreach ($this->config as $key => $value) {
             $this->conf->set($key, strval($value));
         }
-        $this->conf->setLogCb([KafkaUtil::class, 'log']);
 
         if ($this->isTransactionEnabled()) {
             KafkaUtil::logDebug('kafka transactions enabled');
             $this->conf->set('transactional.id', 'TRANSACTION-' . $this->getName());
+        }
+        if ($this->logCallback && is_a($this->logCallback, KafkaLogCallback::class, true)) {
+            $cb = $this->logCallback;
+            $this->conf->setLogCb(new $cb($this, $this->ctx));
         }
 
         $this->rawProducer = new Producer($this->conf);

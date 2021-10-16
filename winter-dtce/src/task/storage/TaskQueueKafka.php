@@ -40,7 +40,7 @@ class TaskQueueKafka extends TaskQueueAbstract {
             $producerConfig = array_merge($producerConfig, $this->taskDef['queue.kafka.producer'][0]);
         }
 
-        $producer = new ProducerConfiguration($producerConfig);
+        $producer = new ProducerConfiguration($producerConfig, $this->ctx);
         $consumer = new ConsumerConfiguration($consumerConfig, $this->ctx);
 
         return new KafkaQueue($consumer, $producer);

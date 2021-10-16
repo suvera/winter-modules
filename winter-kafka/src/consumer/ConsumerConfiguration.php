@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace dev\winterframework\kafka\consumer;
 
 use dev\winterframework\core\context\ApplicationContext;
-use dev\winterframework\kafka\exception\KafkaRebalanceException;
-use dev\winterframework\kafka\KafkaUtil;
+use dev\winterframework\kafka\KafkaLogCallback;
+use dev\winterframework\kafka\KafkaLogCallbackDefault;
+use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\log\Wlf4p;
 use RdKafka\Conf as RdKafkaConf;
 use RdKafka\KafkaConsumer;
@@ -65,6 +66,10 @@ class ConsumerConfiguration {
     private int $retryWaitMs = 300;
 
     private string $lagMonitor = ConsumerLagMonitor::class;
+    private string $errorCallback = ConsumerErrorCallbackDefault::class;
+    private string $logCallback = KafkaLogCallbackDefault::class;
+    private string $rebalanceCallback = KafkaLogCallbackDefault::class;
+    protected string $offsetCommitCallback = '';
     private array $transientExceptions = [];
     private ?RdKafkaConf $conf = null;
     protected KafkaConsumer $rawConsumer;
@@ -125,28 +130,55 @@ class ConsumerConfiguration {
             $this->conf->set($key, strval($value));
         }
         $this->conf->set('group.id', $this->name);
-        $this->conf->setLogCb([KafkaUtil::class, 'log']);
 
-        $this->conf->setRebalanceCb(function (KafkaConsumer $kafka, mixed $err, array $partitions = null) {
-            switch ($err) {
-                case RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS:
-                    self::logInfo("Assigning Kafka partitions: " . KafkaUtil::toPartitionsString($partitions));
-                    $kafka->assign($partitions);
-                    break;
+        if ($this->rebalanceCallback) {
+            $cb = $this->rebalanceCallback;
+            TypeAssert::objectOfIsA(
+                $cb,
+                ConsumerRebalanceCallback::class,
+                'Kafka Consumer config "rebalanceCallback" must be of derived from ConsumerRebalanceCallback'
+            );
+            $this->conf->setRebalanceCb(new $cb($this, $this->ctx));
+        }
 
-                case RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS:
-                    self::logInfo("Revoking Kafka partitions: " . KafkaUtil::toPartitionsString($partitions));
-                    $kafka->assign(null);
-                    break;
+        if ($this->lagMonitor) {
+            $cb = $this->lagMonitor;
+            TypeAssert::objectOfIsA(
+                $cb,
+                ConsumerStatisticsCallback::class,
+                'Kafka Consumer config "lagMonitor" must be of derived from ConsumerStatisticsCallback'
+            );
+            $this->conf->setStatsCb(new $cb($this, $this->ctx));
+        }
 
-                default:
-                    throw new KafkaRebalanceException($err);
-            }
-        });
+        if ($this->errorCallback) {
+            $cb = $this->errorCallback;
+            TypeAssert::objectOfIsA(
+                $cb,
+                ConsumerErrorCallback::class,
+                'Kafka Consumer config "errorCallback" must be of derived from ConsumerErrorCallback'
+            );
+            $this->conf->setErrorCb(new $cb($this, $this->ctx));
+        }
 
-        if ($this->lagMonitor && is_a($this->lagMonitor, ConsumerStatistics::class, true)) {
-            $lagMonitor = $this->lagMonitor;
-            $this->conf->setStatsCb(new $lagMonitor($this, $this->ctx));
+        if ($this->logCallback) {
+            $cb = $this->logCallback;
+            TypeAssert::objectOfIsA(
+                $cb,
+                KafkaLogCallback::class,
+                'Kafka Consumer config "logCallback" must be of derived from KafkaLogCallback'
+            );
+            $this->conf->setLogCb(new $cb($this, $this->ctx));
+        }
+
+        if ($this->offsetCommitCallback) {
+            $cb = $this->offsetCommitCallback;
+            TypeAssert::objectOfIsA(
+                $cb,
+                ConsumerOffsetCommitCallback::class,
+                'Kafka Consumer config "offsetCommitCallback" must be of derived from ConsumerOffsetCommitCallback'
+            );
+            $this->conf->setOffsetCommitCb(new $cb($this, $this->ctx));
         }
 
         $this->rawConsumer = new KafkaConsumer($this->conf);

@@ -67,8 +67,6 @@ producers:
 # End
 ```
 
-**workerNum** - Number of consumer workers to be started.
-
 ## Autowired Services
 
 **[KafkaService](src/KafkaService.php)** is a service available to applications by default.
@@ -94,6 +92,30 @@ $this->kafkaService->produce(....message....);
 
 ```
 
+## Consumer Properties
+
+Name | Required | Default Value | Description
+------------ | ------------ | ------------ | ------------
+name | Yes | | Consumer Group Name
+topic | Yes (alias to 'topics') | | (string) Topic to consume, either 'topic' or 'topics' needed.
+topics | Yes (alias to 'topic') | | (array) Array of Topics to consume,  either 'topic' or 'topics' needed.
+workerNum | Yes | 1 | Number of consumer workers to be started
+workerClass | Yes | | Actual Consumer class implementation, must be derived from AbstractConsumer
+statsCallback | No | dev\winterframework\kafka\consumer\ConsumerLagMonitor | Sets the statistics report callback, must be derived from ConsumerStatisticsCallback. Set 0 to disable it.
+errorCallback | No | dev\winterframework\kafka\consumer\ConsumerErrorCallbackDefault | Set error callback. The error callback is used by librdkafka to signal critical errors back to the application. Must be derived from ConsumerErrorCallback. Set 0 to disable it.
+log_level | No | 6 (Integer) | Set log level value. EMERG = 0, ALERT = 1, CRIT = 2, ERR = 3, WARNING = 4, NOTICE = 5, INFO = 6, DEBUG = 7,
+logCallback | No | dev\winterframework\kafka\KafkaLogCallbackDefault | Set log callback. You will get events according to log_level. Must be derived from KafkaLogCallback. Set 0 to disable it.
+offsetCommitCallback | No | - | Set offset commit callback for use with consumer groups. Must be derived from ConsumerOffsetCommitCallback
+rebalanceCallback | Yes | dev\winterframework\kafka\consumer\ConsumerRebalanceCallbackDefault |Set rebalance callback for use with coordinated consumer group balancing. Must be derived from ConsumerRebalanceCallback.
+
+## Producer Properties
+
+Name | Required | Default Value | Description
+------------ | ------------ | ------------ | ------------
+name | Yes | | Producer  Name
+topic | Yes | | (string) Message will be prodcued to this Topic.
+log_level | No | 6 (Integer) | Set log level value. EMERG = 0, ALERT = 1, CRIT = 2, ERR = 3, WARNING = 4, NOTICE = 5, INFO = 6, DEBUG = 7,
+logCallback | No | dev\winterframework\kafka\KafkaLogCallbackDefault | Set log callback. You will get events according to log_level. Must be derived from KafkaLogCallback. Set 0 to disable it.
 
 ## How to write a consumer worker
 

@@ -6,9 +6,9 @@ namespace dev\winterframework\kafka\consumer;
 use dev\winterframework\core\context\ApplicationContext;
 use RdKafka\KafkaConsumer;
 
-interface ConsumerStatistics {
+interface ConsumerRebalanceCallback {
 
     public function __construct(ConsumerConfiguration $config, ApplicationContext $ctx);
 
-    public function __invoke(KafkaConsumer $kafka, string $json, int $json_len): void;
+    public function __invoke(KafkaConsumer $kafka, mixed $err, array $partitions = null): void;
 }

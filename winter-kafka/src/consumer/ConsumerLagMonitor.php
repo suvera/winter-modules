@@ -8,7 +8,7 @@ use dev\winterframework\io\metrics\prometheus\PrometheusMetricRegistry;
 use dev\winterframework\util\log\Wlf4p;
 use RdKafka\KafkaConsumer;
 
-class ConsumerLagMonitor implements ConsumerStatistics {
+class ConsumerLagMonitor implements ConsumerStatisticsCallback {
     use Wlf4p;
 
     public function __construct(

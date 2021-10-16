@@ -114,7 +114,7 @@ class KafkaModule implements WinterModule {
             }
 
             $producerConfig = array_merge($producerDefaults, $data);
-            $kafkaService->addProducer(new ProducerConfiguration($producerConfig));
+            $kafkaService->addProducer(new ProducerConfiguration($producerConfig, $ctx));
         }
     }
 
