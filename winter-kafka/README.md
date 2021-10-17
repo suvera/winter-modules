@@ -97,14 +97,14 @@ $this->kafkaService->produce(....message....);
 Name | Required? | Description
 ------------ | ------------ | ------------
 name | Yes | Consumer Group Name
-topic | <div style="width:120px">Yes</div> | (string) (alias to 'topics') Topic to consume, either 'topic' or 'topics' is needed.
-topics | Yes | (array) (alias to 'topic') Array of Topics to consume,  either 'topic' or 'topics' is needed.
+topic | <div style="width:120px">Yes</div> | (string) (alias to `topics`) Topic to consume, either `topic` or `topics` is needed.
+topics | Yes | (array) (alias to `topic`) Array of Topics to consume,  either `topic` or `topics` is needed.
 workerNum | Yes | Default Value: `1`<br>Number of consumer workers to be started
 workerClass | Yes | Actual Consumer class implementation, must be derived from AbstractConsumer
-statsCallback | No | Default Value: `dev\winterframework\kafka\consumer\ConsumerLagMonitor` <br>Sets the statistics report callback, must be derived from ConsumerStatisticsCallback. Set 0 to disable it.
-errorCallback | No | Default Value: `dev\winterframework\kafka\consumer\ConsumerErrorCallbackDefault` <br> Set error callback. The error callback is used by librdkafka to signal critical errors back to the application. Must be derived from ConsumerErrorCallback. Set 0 to disable it.
+statsCallback | No | Default Value: `dev\winterframework\kafka\consumer\ConsumerLagMonitor` <br>Sets the statistics report callback, must be derived from ConsumerStatisticsCallback. <br>Set 0 to disable it.
+errorCallback | No | Default Value: `dev\winterframework\kafka\consumer\ConsumerErrorCallbackDefault` <br> Set error callback. The error callback is used by librdkafka to signal critical errors back to the application. Must be derived from ConsumerErrorCallback. <br>Set 0 to disable it.
 log_level | No | Default Value: `6` (Integer).<br>Set log level value. EMERG = 0, ALERT = 1, CRIT = 2, ERR = 3, WARNING = 4, NOTICE = 5, INFO = 6, DEBUG = 7,
-logCallback | No | Default Value: `dev\winterframework\kafka\KafkaLogCallbackDefault` <br>Set log callback. You will get events according to log_level. Must be derived from KafkaLogCallback. Set 0 to disable it.
+logCallback | No | Default Value: `dev\winterframework\kafka\KafkaLogCallbackDefault` <br>Set log callback. You will get events according to log_level. Must be derived from KafkaLogCallback. <br>Set 0 to disable it.
 offsetCommitCallback | No | Default Value: `(empty)` <br>Set offset commit callback for use with consumer groups. Must be derived from ConsumerOffsetCommitCallback
 rebalanceCallback | Yes | Default Value: `dev\winterframework\kafka\consumer\ConsumerRebalanceCallbackDefault` <br>Set rebalance callback for use with coordinated consumer group balancing. Must be derived from ConsumerRebalanceCallback.
  (Others) | - |  [Full List of Settings](https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md)
@@ -116,7 +116,7 @@ Name | Required | Description
 name | Yes | Producer  Name
 topic | Yes | (string) Message will be produced to this Topic.
 log_level | No | Default Value: `6` (Integer). <br>Set log level value. EMERG = 0, ALERT = 1, CRIT = 2, ERR = 3, WARNING = 4, NOTICE = 5, INFO = 6, DEBUG = 7,
-logCallback | No | Default Value: `dev\winterframework\kafka\KafkaLogCallbackDefault` <br>Set log callback. You will get events according to log_level. Must be derived from KafkaLogCallback. Set 0 to disable it.
+logCallback | No | Default Value: `dev\winterframework\kafka\KafkaLogCallbackDefault` <br>Set log callback. You will get events according to log_level. Must be derived from KafkaLogCallback. <br>Set 0 to disable it.
 (Others) | - |  [Full List of Settings](https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md)
 
 ## How to write a consumer worker
