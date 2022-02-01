@@ -28,7 +28,7 @@ class ConsumerRecord {
             $groupName
         );
 
-        $obj->headers = $message->headers;
+        $obj->headers = $message->headers ?? null;
         $obj->timestamp = $message->timestamp;
 
         return $obj;
