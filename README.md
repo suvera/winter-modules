@@ -15,6 +15,7 @@ composer require suvera/winter-modules
 ## Modules
 
 - [Apache Kafka](winter-kafka/)
+- [AWS SQS](winter-sqs/)
 - [Redis](winter-data-redis/)
 - [Memcache](winter-data-memcache/)
 - [Distributed Task Computing Engine](winter-dtce/)

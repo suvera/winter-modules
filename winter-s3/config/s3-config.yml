@@ -2,7 +2,9 @@ s3:
     -   name: abcd
         version: latest
         region: us-east-1
-        credentials: # Aws\Credentials\CredentialsInterface, array, bool, callable
+        credentials: # optional; Aws\Credentials\CredentialsInterface, array, bool, callable
+            # Omit this section to use IAM roles / default credential chain
+            # (e.g. EKS IRSA, EC2 instance profile)
             -   key: a
                 secret: b
                 token: c

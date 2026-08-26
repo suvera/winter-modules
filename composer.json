@@ -10,7 +10,7 @@
     "homepage": "https://suvera.github.io/",
     "config": {
         "platform": {
-            "php": "8.0"
+            "php": "8.5"
         }
     },
     "license": "MIT",
@@ -37,6 +37,8 @@
             "dev\\winterframework\\kafka\\": "winter-kafka/src/",
             "test\\winterframework\\kafka\\": "winter-kafka/srcTest/",
             "dev\\winterframework\\s3\\": "winter-s3/src/",
+            "dev\\winterframework\\sqs\\": "winter-sqs/src/",
+            "test\\winterframework\\sqs\\": "winter-sqs/srcTest/",
             "test\\winterframework\\s3\\": "winter-s3/srcTest/",
             "dev\\winterframework\\security\\": "winter-security/src/",
             "test\\winterframework\\security\\": "winter-security/srcTest/",
@@ -48,10 +50,11 @@
     "repositories": [
     ],
     "require": {
+        "php": ">=8.5",
         "ext-pcntl": "*",
         "ext-redis": "*",
         "ext-swoole": "*",
-        "aws/aws-sdk-php": "3.*"
+        "aws/aws-sdk-php": "^3.0"
     },
     "require-dev": {
         "kwn/php-rdkafka-stubs": "dev-master"

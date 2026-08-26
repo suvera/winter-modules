@@ -1,0 +1,50 @@
+sqs:
+    # Connection settings for AWS SQS.  Each connection represents an
+    # AWS account / region / credential set.  Queues are referenced by
+    # name at runtime; they are NOT listed here.
+    connections:
+        -   name: __default__
+            version: latest
+            region: us-east-1
+            # credentials: optional; omit to use IAM roles / default credential chain
+            # (e.g. EKS IRSA, EC2 instance profile)
+            retries: 3
+            delaySeconds: 0
+
+        -   name: primary
+            region: us-east-1
+            messageAttributes: {}
+            messageGroupId: ""        # FIFO only
+            messageDeduplicationId: "" # FIFO only
+
+        -   name: secondary
+            region: ap-south-1
+            credentials:
+                -   key: a
+                    secret: b
+                    token: c
+
+    # Consumer configuration – each consumer references a connection by name
+    # and polls a specific SQS queue.
+    consumers:
+        -   name: __default__
+            version: latest
+            region: us-east-1
+            waitTimeSeconds: 20       # long-polling wait time
+            maxNumberOfMessages: 10
+            visibilityTimeout: 30
+            pollIntervalMs: 100
+
+        -   name: MyQueue1-consumer
+            connection: primary
+            queueName: MyQueue1
+            # queueUrl: https://sqs.us-east-1.amazonaws.com/123456789/MyQueue1
+            workerNum: 1
+            workerClass: some\package\className
+            transientExceptions: []
+
+        -   name: MyQueue2-consumer
+            connection: secondary
+            queueName: MyQueue2
+            workerNum: 2
+            workerClass: some\package2\className2
