@@ -47,9 +47,13 @@ class SqsWorkerProcess extends ServerWorkerProcess {
 
         self::logInfo("SQS consumer starting. '" . $queueName
             . "' sqs-worker-" . $this->workerId . ',  pid: ' . $this->process->pid
-            . ',  mypid: ' . getmypid());
+            . ',  mypid: ' . getmypid()
+            . ',  workerClass: ' . $this->consumer->getWorkerClass()
+            . ',  queueName: ' . $this->consumer->getQueueName()
+            . ',  connection: ' . $this->consumer->getConnectionName());
 
         $workerClass = $this->consumer->getWorkerClass();
+        self::logInfo('Creating worker instance of class: ' . $workerClass);
         /** @var Consumer $worker */
         $worker = ReflectionUtil::createAutoWiredObject(
             $this->appCtx,
@@ -57,16 +61,20 @@ class SqsWorkerProcess extends ServerWorkerProcess {
             $this->appCtx,
             $this->consumer
         );
+        self::logInfo('Worker instance created: ' . get_class($worker));
+
+        $pollIntervalMs = intval($this->consumer->getConfigVal('pollIntervalMs', 0));
+        self::logInfo('Entering SQS poll loop, pollIntervalMs=' . $pollIntervalMs);
 
         while (true) {
             $records = $this->receiveRecords();
+            self::logDebug('Received ' . $records->count() . ' messages from queue ' . $queueName);
 
             if ($records->count() > 0) {
                 $this->consumerRecords($records, $worker);
                 $this->deleteRecords($records);
             }
 
-            $pollIntervalMs = intval($this->consumer->getConfigVal('pollIntervalMs', 0));
             if ($pollIntervalMs > 0) {
                 usleep($pollIntervalMs * 1000);
             }

@@ -16,6 +16,13 @@ class SqsUtil {
     public static function buildClient(array $config): SqsClient {
         $key = md5(serialize($config));
         if (!isset(self::$clients[$key])) {
+            // Use PHP's built-in stream wrapper HTTP handler instead of Swoole's
+            // coroutine HTTP client to avoid CURLOPT_PROTOCOLS_STR (10318) error
+            // which is not supported by Swoole's cURL implementation when used
+            // with AWS SDK's WrappedHttpHandler.
+            if (!isset($config['http_handler']) && extension_loaded('swoole')) {
+                $config['http_handler'] = new SwooleHttpHandler();
+            }
             self::$clients[$key] = new SqsClient($config);
         }
 

@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace dev\winterframework\sqs;
 
+use dev\winterframework\core\app\WinterModule;
 use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\core\context\ApplicationContextData;
-use dev\winterframework\core\context\WinterModule;
-use dev\winterframework\core\context\support\Module;
-use dev\winterframework\exception\WinterException;
+use dev\winterframework\core\context\WinterBeanProviderContext;
 use dev\winterframework\sqs\consumer\ConsumerConfiguration;
-use dev\winterframework\sqs\consumer\ConsumerConfigurations;
+use dev\winterframework\stereotype\Module;
 use dev\winterframework\util\log\Wlf4p;
 use dev\winterframework\util\ModuleTrait;
 
@@ -22,23 +21,40 @@ class SqsModule implements WinterModule {
     const __DEFAULT = '__default__';
 
     public function init(ApplicationContext $ctx, ApplicationContextData $ctxData): void {
+        self::logInfo('SqsModule::init() called');
         $this->addBeanComponent($ctx, $ctxData, SqsServiceImpl::class);
+        self::logInfo('SqsModule::init() completed');
     }
 
     public function begin(ApplicationContext $ctx, ApplicationContextData $ctxData): void {
+        self::logInfo('SqsModule::begin() called');
         $moduleDef = $ctx->getModule(static::class);
         $config = $this->retrieveConfiguration($ctx, $ctxData, $moduleDef);
 
-        $this->buildConnections($config, $ctx);
+        self::logInfo('SqsModule config loaded, keys: ' . json_encode(array_keys($config)));
+        if (isset($config['sqs'])) {
+            self::logInfo('SqsModule config[sqs] keys: ' . json_encode(array_keys($config['sqs'])));
+            if (isset($config['sqs']['connections'])) {
+                self::logInfo('SqsModule connections count: ' . count($config['sqs']['connections']));
+            }
+            if (isset($config['sqs']['consumers'])) {
+                self::logInfo('SqsModule consumers count: ' . count($config['sqs']['consumers']));
+            }
+        }
+
+        $this->buildConnections($config, $ctx, $ctxData);
         $this->buildConsumers($config, $ctx);
         $this->startSqs($config, $ctx);
+        self::logInfo('SqsModule::begin() completed');
     }
 
     protected function startSqs(array $config, ApplicationContext $ctx): void {
+        self::logInfo('SqsModule::startSqs() called');
         /** @var SqsServiceImpl $service */
         $service = $ctx->beanByClass(SqsServiceImpl::class);
 
         $service->beginConsume();
+        self::logInfo('SqsModule::startSqs() completed');
     }
 
     protected function getDefaults(array $list): array {
@@ -53,37 +69,58 @@ class SqsModule implements WinterModule {
         return $defaults;
     }
 
-    protected function buildConnections(array $config, ApplicationContext $ctx): void {
-        if (!isset($config['sqs']['connections']) || !is_array($config['sqs']['connections'])) {
+    protected function buildConnections(
+        array $config,
+        ApplicationContext $ctx,
+        ApplicationContextData $ctxData
+    ): void {
+        $connections = $config['sqs.connections'] ?? [];
+        if (!is_array($connections)) {
             return;
         }
 
+        self::logInfo('buildConnections: found ' . count($connections) . ' connection(s)');
+
         /** @var SqsServiceImpl $service */
         $service = $ctx->beanByClass(SqsServiceImpl::class);
+        /** @var WinterBeanProviderContext $beanProvider */
+        $beanProvider = $ctxData->getBeanProvider();
 
-        $connectionDefaults = $this->getDefaults($config['sqs']['connections']);
+        $connectionDefaults = $this->getDefaults($connections);
 
-        foreach ($config['sqs']['connections'] as $data) {
+        foreach ($connections as $data) {
             if ($data['name'] == self::__DEFAULT) {
                 continue;
             }
 
             $connectionConfig = array_merge($connectionDefaults, $data);
-            $service->addConnection(new SqsConnection($connectionConfig, $ctx));
+            $connection = new SqsConnection($connectionConfig, $ctx);
+            $service->addConnection($connection);
+
+            $beanProvider->registerInternalBean(
+                $connection,
+                SqsConnection::class,
+                !$ctx->hasBeanByClass(SqsConnection::class),
+                $connection->getName() . '_connection',
+                true
+            );
         }
     }
 
     protected function buildConsumers(array $config, ApplicationContext $ctx): void {
-        if (!isset($config['sqs']['consumers']) || !is_array($config['sqs']['consumers'])) {
+        $consumers = $config['sqs.consumers'] ?? [];
+        if (!is_array($consumers)) {
             return;
         }
+
+        self::logInfo('buildConsumers: found ' . count($consumers) . ' consumer(s)');
 
         /** @var SqsServiceImpl $service */
         $service = $ctx->beanByClass(SqsServiceImpl::class);
 
-        $consumerDefaults = $this->getDefaults($config['sqs']['consumers']);
+        $consumerDefaults = $this->getDefaults($consumers);
 
-        foreach ($config['sqs']['consumers'] as $data) {
+        foreach ($consumers as $data) {
             if ($data['name'] == self::__DEFAULT) {
                 continue;
             }

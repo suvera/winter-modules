@@ -20,13 +20,4 @@ class ConsumerRecords extends ArrayList {
         parent::offsetSet($offset, $value);
     }
 
-    public static function ofValues(ConsumerRecord ...$records): ConsumerRecords {
-        $list = new self();
-        foreach ($records as $record) {
-            $list[] = $record;
-        }
-
-        return $list;
-    }
-
 }

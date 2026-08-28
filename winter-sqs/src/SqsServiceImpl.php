@@ -191,31 +191,48 @@ class SqsServiceImpl implements SqsService {
     }
 
     public function addConnection(SqsConnection $config): void {
+        self::logInfo('SQS connection added: ' . $config->getName());
         $this->connections[] = $config;
     }
 
     public function addConsumer(ConsumerConfiguration $config): void {
+        self::logInfo('SQS consumer added: ' . $config->getName()
+            . ', workerClass: ' . $config->getWorkerClass()
+            . ', workerNum: ' . $config->getWorkerNum()
+            . ', connection: ' . $config->getConnectionName()
+            . ', queueName: ' . $config->getQueueName());
         $this->consumers[] = $config;
     }
 
     protected function startConsumer(ConsumerConfiguration $consumer, int $i): void {
+        self::logInfo('Starting SQS consumer worker: ' . $consumer->getName()
+            . ', workerId: ' . ($i + 1)
+            . ', workerClass: ' . $consumer->getWorkerClass());
         $ps = new SqsWorkerProcess($this->wServer, $this->appCtx, $consumer, $i + 1);
         $this->wServer->addProcess($ps);
     }
 
     public function beginConsume(): void {
+        self::logInfo('beginConsume() called, consumerStarted=' . ($this->consumerStarted ? 'true' : 'false')
+            . ', consumers count=' . $this->consumers->count());
+
         if ($this->consumerStarted) {
+            self::logInfo('beginConsume() already started, skipping');
             return;
         }
 
         foreach ($this->consumers as $consumer) {
             /** @var ConsumerConfiguration $consumer */
-            for ($i = 0; $i < $consumer->getWorkerNum(); $i++) {
+            $workerNum = $consumer->getWorkerNum();
+            self::logInfo('beginConsume() processing consumer: ' . $consumer->getName()
+                . ', workerNum=' . $workerNum);
+            for ($i = 0; $i < $workerNum; $i++) {
                 $this->startConsumer($consumer, $i);
             }
         }
 
         $this->consumerStarted = true;
+        self::logInfo('beginConsume() completed, consumerStarted set to true');
     }
 
 }

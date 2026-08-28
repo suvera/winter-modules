@@ -6,6 +6,7 @@ namespace dev\winterframework\sqs;
 
 use Aws\Sqs\SqsClient;
 use dev\winterframework\core\context\ApplicationContext;
+use dev\winterframework\sqs\StreamWrapperHttpHandler;
 use dev\winterframework\util\log\Wlf4p;
 
 /**
@@ -67,6 +68,13 @@ class SqsConnection {
 
         if ($this->credentials) {
             $args['credentials'] = $this->credentials;
+        }
+
+        // Use plain PHP stream wrapper HTTP handler instead of Swoole's coroutine HTTP client
+        // to avoid CURLOPT_PROTOCOLS_STR (10318) error which is not supported by Swoole's
+        // cURL implementation when used with AWS SDK's WrappedHttpHandler
+        if (!isset($args['http_handler']) && extension_loaded('swoole')) {
+            $args['http_handler'] = new SwooleHttpHandler();
         }
 
         $this->rawClient = SqsUtil::buildClient($args);

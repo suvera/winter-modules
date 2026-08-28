@@ -18,7 +18,7 @@ class ConsumerRecord {
     ) {
     }
 
-    public static function fromResult(Result $message, ?string $queueName = null): self {
+    public static function fromResult(Result|array $message, ?string $queueName = null): self {
         return new self(
             strval($message['MessageId'] ?? ''),
             strval($message['ReceiptHandle'] ?? ''),

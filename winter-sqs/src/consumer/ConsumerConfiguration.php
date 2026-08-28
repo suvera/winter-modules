@@ -74,7 +74,7 @@ class ConsumerConfiguration {
     protected function buildConnection(): void {
         if ($this->connection) {
             /** @var SqsConnection $conn */
-            $conn = $this->ctx->beanByName($this->connection);
+            $conn = $this->ctx->beanByName($this->connection . '_connection');
             $this->sqsConnection = $conn;
         } else {
             // Build an anonymous connection from inline settings (region, credentials, ...)
