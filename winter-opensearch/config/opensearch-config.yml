@@ -1,0 +1,27 @@
+opensearch:
+    -   name: default
+        hosts:
+            - http://localhost:9200
+        # username: admin
+        # password: admin
+        # retries: 3
+        # ssl_verification: true
+        # sniff_on_start: false
+        # connection_params: # extra RingPHP/cURL client options
+        #     -   client:
+        #             curl:
+        #                 10002: 5   # e.g. CURLOPT_CONNECTTIMEOUT
+        #
+        # ---- Amazon OpenSearch Service (AWS) ----
+        # When "aws" is set, every request is signed with AWS Signature V4
+        # using aws/aws-sdk-php, on top of the configured http/swoole handler.
+        # aws:
+        #     -   region: us-east-1
+        #         service: es    # "es" for Amazon OpenSearch Service, "aoss" for Serverless
+        #         # credentials: # optional; omit to use default provider chain (env/IAM role/IRSA)
+        #         #     -   key: your_access_key
+        #         #         secret: your_secret_key
+        #         #         token: your_session_token
+        #
+        # http_handler: callback # optional custom RingPHP handler: function(array $request)
+        # handler: callback

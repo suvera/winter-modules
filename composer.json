@@ -40,6 +40,7 @@
             "dev\\winterframework\\sqs\\": "winter-sqs/src/",
             "test\\winterframework\\sqs\\": "winter-sqs/srcTest/",
             "test\\winterframework\\s3\\": "winter-s3/srcTest/",
+            "Winter\\OpenSearch\\": "winter-opensearch/src/",
             "dev\\winterframework\\security\\": "winter-security/src/",
             "test\\winterframework\\security\\": "winter-security/srcTest/",
             "dev\\winterframework\\dtce\\": "winter-dtce/src/",
@@ -54,7 +55,8 @@
         "ext-pcntl": "*",
         "ext-redis": "*",
         "ext-swoole": "*",
-        "aws/aws-sdk-php": "^3.0"
+        "aws/aws-sdk-php": "^3.0",
+        "opensearch-project/opensearch-php": "2.0"
     },
     "require-dev": {
         "kwn/php-rdkafka-stubs": "dev-master"
