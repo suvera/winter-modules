@@ -27,15 +27,6 @@ opensearch:
         ssl_verification: false   # only disable for local/dev clusters
 ```
 
-## Swoole Support
-
-When the `swoole` extension is loaded, this module automatically installs
-[`SwooleHttpHandler`](src/SwooleHttpHandler.php), which sends requests via
-`\Swoole\Coroutine\Http\Client` instead of the RingPHP cURL handler. This is
-required because Swoole's cURL hook (`SWOOLE_HOOK_ALL`) does not support
-`CURLOPT_PROTOCOLS_STR`, which the default handler relies on — using it under
-Swoole would fatal-error. No configuration is needed; you can override this
-by explicitly setting `http_handler` or `handler` in the config.
 
 ## Using Amazon OpenSearch Service (AWS)
 
@@ -59,18 +50,20 @@ opensearch:
                 #         token: your_session_token
 ```
 
-If `aws.credentials` is omitted, credentials are resolved using AWS SDK's
-default provider chain (environment variables, shared config/credentials
-files, ECS task role, EC2 instance profile, or IRSA on EKS) — the same
-mechanism used by [`winter-s3`](../winter-s3/README.md).
-
-The signing wrapper works transparently with Swoole: it signs the request
-array before handing it off to `SwooleHttpHandler` (or cURL) for actual
-transport, so both AWS signing and Swoole coroutines work together.
 
 ## OpenSearchTemplate Methods
 
-The `OpenSearchTemplate` class provides all OpenSearch API methods through magic `__call` method.
+```yaml
+#[Autowired]
+private OpenSearchTemplate $openSearch; 
+
+// or
+
+#[Autowired("aws_opensearch")]
+private OpenSearchTemplate $openSearch;
+```
+
+The `OpenSearchTemplate` class provides all OpenSearch API methods.
 
 ### Commonly Used Methods
 
