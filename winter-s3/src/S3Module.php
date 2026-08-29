@@ -45,14 +45,16 @@ class S3Module implements WinterModule {
 
         $this->checkConfig($s3Config, $ctx);
 
-        if ($ctx->hasBeanByName($s3Config['name'])) {
-            throw new BeansException("Bean already exist with name '" . $s3Config['name']
+        $beanName = $s3Config['name'];
+        
+        if ($ctx->hasBeanByName($beanName)) {
+            throw new BeansException("Bean already exist with name '" . $beanName
                 . "' S3-Config,  conflicts with other bean");
         }
 
         unset($s3Config['name']);
 
-        $s3Client = new S3Client($s3Config);
+        $s3Client = S3Util::buildClient($s3Config);
 
         $tpl = new S3Template($s3Client);
 
@@ -60,7 +62,7 @@ class S3Module implements WinterModule {
             $tpl,
             S3Template::class,
             !$ctx->hasBeanByClass(S3Template::class),
-            $s3Config['name'],
+            $beanName,
             true
         );
     }
