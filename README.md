@@ -20,7 +20,6 @@ composer require suvera/winter-modules
 - [Memcache](winter-data-memcache/)
 - [Distributed Task Computing Engine](winter-dtce/)
 - [S3 Like Storage](winter-s3/)
-- [SQS](winter-sqs/)
 - [Open Search](winter-opensearch/)
 - Cassandra 
 - MongoDB

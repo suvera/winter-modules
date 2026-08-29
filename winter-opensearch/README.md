@@ -1,8 +1,26 @@
 # WinterBoot Module - OpenSearch
 
+Winter OpenSearch is a module that provides easy configuration and access to OpenSearch or similar services from Winter
+Boot applications.
+
+- [`OpenSearchTemplate`](src/OpenSearchTemplate.php)
+
 ## Setup
 
-Add the following to your `config/opensearch-config.yml`:
+```shell
+composer require suvera/winter-modules
+```
+
+Append following code to your application.yml
+
+```yaml
+modules:
+    -   module: 'dev\winterframework\opensearch\OpenSearchModule'
+        enabled: true
+        configFile: opensearch-config.yml
+```
+
+# opensearch-config.yml
 
 ```yaml
 opensearch:
@@ -51,7 +69,7 @@ opensearch:
 ```
 
 
-## OpenSearchTemplate Methods
+# OpenSearchTemplate Methods
 
 ```yaml
 #[Autowired]
