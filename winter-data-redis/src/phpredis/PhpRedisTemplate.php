@@ -267,6 +267,9 @@ class PhpRedisTemplate implements PhpRedisAbstractTemplate {
             $this->config['retryInterval'] ?? null,
             $this->config['readTimeout'] ?? 0
         );
+        if (isset($this->config['auth'])) {
+            $this->redis->auth($this->config['auth']);
+        }
     }
 
     /**

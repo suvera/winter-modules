@@ -120,7 +120,7 @@ class OpenSearchUtil {
         };
     }
 
-    private static function resolveAwsCredentials($credentials): CredentialsInterface|callable {
+    private static function resolveAwsCredentials(mixed $credentials): CredentialsInterface|callable {
         if ($credentials instanceof CredentialsInterface) {
             return $credentials;
         }

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace dev\winterframework\data\redis\phpredis;
@@ -302,5 +303,4 @@ class PhpRedisArrayTemplate implements PhpRedisAbstractTemplate {
 
         return $redis->$name(...$arguments);
     }
-
 }

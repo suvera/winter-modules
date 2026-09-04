@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 
@@ -38,5 +39,4 @@ class PhpRedisSentinelTemplate {
     public function __call(string $name, array $arguments): mixed {
         return $this->redis->$name(...$arguments);
     }
-
 }

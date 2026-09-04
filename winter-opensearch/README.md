@@ -31,6 +31,8 @@ opensearch:
         # password: admin
         # retries: 3
         # ssl_verification: true
+        migrations:
+            enabled: true
 ```
 
 ## Using Basic Authentication
@@ -43,6 +45,8 @@ opensearch:
         username: admin
         password: admin
         ssl_verification: false   # only disable for local/dev clusters
+        migrations:
+            enabled: true
 ```
 
 

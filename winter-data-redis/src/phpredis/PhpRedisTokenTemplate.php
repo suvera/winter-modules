@@ -418,5 +418,4 @@ class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
             unset($this->redis[$hostName]);
         }
     }
-
 }
