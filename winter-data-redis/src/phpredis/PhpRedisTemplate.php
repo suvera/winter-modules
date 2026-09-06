@@ -259,6 +259,18 @@ class PhpRedisTemplate implements PhpRedisAbstractTemplate {
         $this->redis = new Redis();
         $connect = isset($this->config['persistence']) && $this->config['persistence'] ? 'pconnect' : 'connect';
 
+        $port = 6379;
+        if (isset($this->config['port'])) {
+            $port = intval($this->config['port']);
+            if ($port < 1 || $port > 65535) {
+                throw new \InvalidArgumentException("Invalid Redis port: $port");
+            }
+        }
+
+        $this->config['timeout'] = floatval($this->config['timeout'] ?? 0);
+        $this->config['retryInterval'] = floatval($this->config['retryInterval'] ?? null);
+        $this->config['readTimeout'] = floatval($this->config['readTimeout'] ?? 0);
+
         $this->redis->$connect(
             $this->config['host'],
             $this->config['port'] ?? 6379,
