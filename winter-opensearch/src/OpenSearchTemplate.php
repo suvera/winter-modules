@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace Winter\OpenSearch;
+namespace dev\winterframework\opensearch;
 
 use OpenSearch\Client;
 use OpenSearch\Namespaces\AsyncSearchNamespace;

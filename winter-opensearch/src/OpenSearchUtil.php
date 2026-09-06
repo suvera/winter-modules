@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace Winter\OpenSearch;
+namespace dev\winterframework\opensearch;
 
 use Aws\Credentials\CredentialProvider;
 use Aws\Credentials\Credentials;

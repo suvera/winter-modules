@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace Winter\OpenSearch;
+namespace dev\winterframework\opensearch;
 
 use GuzzleHttp\Ring\Core;
 use GuzzleHttp\Ring\Exception\ConnectException;
@@ -28,6 +28,7 @@ use Throwable;
  */
 class SwooleHttpHandler {
     public function __invoke(array $request) {
+        $start = microtime(true);
         $client = null;
         try {
             $uri = Core::url($request);
@@ -65,6 +66,25 @@ class SwooleHttpHandler {
                 $headers['Connection'],
                 $headers['Expect']
             );
+            // opensearch-php passes basic-auth credentials as cURL options
+            // (CURLOPT_HTTPAUTH / CURLOPT_USERPWD), not as a header. The stock
+            // cURL handler applies them; translate them here into a preemptive
+            // Authorization header so secured clusters don't answer 401.
+            $hasAuthHeader = false;
+            foreach ($headers as $headerName => $_) {
+                if (strcasecmp((string) $headerName, 'Authorization') === 0) {
+                    $hasAuthHeader = true;
+                    break;
+                }
+            }
+            if (!$hasAuthHeader) {
+                $curlOpts = $request['client']['curl'] ?? [];
+                $userPwdKey = defined('CURLOPT_USERPWD') ? CURLOPT_USERPWD : 10005;
+                $userPwd = is_array($curlOpts) ? ($curlOpts[$userPwdKey] ?? null) : null;
+                if (is_string($userPwd) && $userPwd !== '') {
+                    $headers['Authorization'] = 'Basic ' . base64_encode($userPwd);
+                }
+            }
             $client->setHeaders($headers);
 
             $client->setMethod($request['http_method'] ?? 'GET');
@@ -83,6 +103,12 @@ class SwooleHttpHandler {
                     'headers' => [],
                     'body' => null,
                     'effective_url' => $uri,
+                    'transfer_stats' => [
+                        'url' => $uri,
+                        'primary_port' => $port,
+                        'total_time' => microtime(true) - $start,
+                    ],
+                    'curl' => ['errno' => 7, 'error' => $errMsg],
                     'error' => new ConnectException($errMsg),
                 ]);
             }
@@ -103,13 +129,24 @@ class SwooleHttpHandler {
                 'headers' => $responseHeaders,
                 'body' => $bodyStream,
                 'effective_url' => $uri,
-                'transfer_stats' => [],
+                'transfer_stats' => [
+                    'url' => $uri,
+                    'primary_port' => $port,
+                    'total_time' => microtime(true) - $start,
+                ],
             ]);
         } catch (Throwable $e) {
             return new CompletedFutureArray([
                 'status' => null,
                 'headers' => [],
                 'body' => null,
+                'effective_url' => $uri ?? '',
+                'transfer_stats' => [
+                    'url' => $uri ?? '',
+                    'primary_port' => $port ?? 0,
+                    'total_time' => microtime(true) - $start,
+                ],
+                'curl' => ['errno' => 7, 'error' => $e->getMessage()],
                 'error' => new RingException($e->getMessage()),
             ]);
         } finally {

@@ -40,7 +40,7 @@
             "dev\\winterframework\\sqs\\": "winter-sqs/src/",
             "test\\winterframework\\sqs\\": "winter-sqs/srcTest/",
             "test\\winterframework\\s3\\": "winter-s3/srcTest/",
-            "Winter\\OpenSearch\\": "winter-opensearch/src/",
+            "dev\\winterframework\\opensearch\\": "winter-opensearch/src/",
             "dev\\winterframework\\security\\": "winter-security/src/",
             "test\\winterframework\\security\\": "winter-security/srcTest/",
             "dev\\winterframework\\dtce\\": "winter-dtce/src/",
