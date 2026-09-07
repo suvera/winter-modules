@@ -10,6 +10,7 @@ use dev\winterframework\core\context\ApplicationContextData;
 use dev\winterframework\core\context\WinterBeanProviderContext;
 use dev\winterframework\exception\BeansException;
 use dev\winterframework\exception\ModuleException;
+use dev\winterframework\sqs\SqsConnection;
 use dev\winterframework\stereotype\Module;
 use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\ModuleTrait;
@@ -73,6 +74,14 @@ class S3Module implements WinterModule {
         TypeAssert::arrayItemNotEmpty($s3Config, 'version', 's3-config must have "version" ');
 
         $this->setCallableConfig($s3Config, 'credentials', $ctx);
+        // Winter Boot flattens a map-form credentials block into dotted keys
+        // (credentials.key, ...); reassemble it (list-form is unwrapped above).
+        if (!isset($s3Config['credentials'])) {
+            [$dotted, $s3Config] = SqsConnection::extractDottedValues($s3Config, 'credentials');
+            if ($dotted !== []) {
+                $s3Config['credentials'] = $dotted;
+            }
+        }
         $this->setCallableConfig($s3Config, 'endpoint_provider', $ctx);
         $this->setCallableConfig($s3Config, 'endpoint_discovery', $ctx);
         $this->setCallableConfig($s3Config, 'use_arn_region', $ctx);
@@ -84,10 +93,19 @@ class S3Module implements WinterModule {
         $this->setCallableConfig($s3Config, 'http_handler', $ctx);
         $this->setCallableConfig($s3Config, 'handler', $ctx);
 
+        // Winter Boot flattens a map-form http block into dotted keys
+        // (http.verify, ...); reassemble it before the list-unwrap below.
+        if (!isset($s3Config['http'])) {
+            [$dotted, $s3Config] = SqsConnection::extractDottedValues($s3Config, 'http');
+            if ($dotted !== []) {
+                $s3Config['http'] = $dotted;
+            }
+        }
+
         if (isset($s3Config['http'])) {
             if (is_array($s3Config['http']) && isset($s3Config['http'][0])) {
                 $s3Config['http'] = $s3Config['http'][0];
-            } else {
+            } else if (!is_array($s3Config['http'])) {
                 throw new ModuleException('s3-config has mis-configured "http", must be array ');
             }
         }

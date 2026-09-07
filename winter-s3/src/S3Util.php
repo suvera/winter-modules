@@ -15,13 +15,11 @@ class S3Util {
     public static function buildClient(array $config): S3Client {
         $key = md5(serialize($config));
         if (!isset(self::$clients[$key])) {
-            // Use PHP's built-in stream wrapper HTTP handler instead of Swoole's
-            // coroutine HTTP client to avoid CURLOPT_PROTOCOLS_STR (10318) error
-            // which is not supported by Swoole's cURL implementation when used
-            // with AWS SDK's WrappedHttpHandler.
-            if (!isset($config['http_handler']) && extension_loaded('swoole')) {
-                $config['http_handler'] = new SwooleHttpHandler();
-            }
+            // Route both API requests (http_handler) and default-chain
+            // credential fetching (IMDS/ECS via `client`) through Swoole's
+            // coroutine HTTP client to avoid the CURLOPT_PROTOCOLS_STR (10318)
+            // error from Swoole's cURL shim.
+            $config = SwooleHttpHandler::applyToClientConfig($config);
             self::$clients[$key] = new S3Client($config);
         }
 

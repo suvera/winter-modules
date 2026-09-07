@@ -6,7 +6,6 @@ namespace dev\winterframework\sqs;
 
 use Aws\Sqs\SqsClient;
 use dev\winterframework\core\context\ApplicationContext;
-use dev\winterframework\sqs\StreamWrapperHttpHandler;
 use dev\winterframework\util\log\Wlf4p;
 
 /**
@@ -42,6 +41,85 @@ class SqsConnection {
                 $this->config[$key] = $value;
             }
         }
+
+        [$this->credentials, $this->config] = self::normalizeCredentials(
+            $this->credentials,
+            $this->config
+        );
+    }
+
+    /**
+     * Normalise the `credentials` setting into the map form the AWS SDK expects.
+     *
+     * Accepts:
+     * - map form: ['key' => ..., 'secret' => ..., 'token' => ...]
+     * - single-element list form: [['key' => ..., ...]] (as in sqs-config.yml samples)
+     * - Winter Boot flattened dotted keys (Arrays::flattenByKey converts
+     *   nested maps inside connection lists into dotted keys, so the plain
+     *   `credentials` key never arrives): reassembled to any depth via
+     *   extractDottedValues(). A non-empty partial map is passed through so
+     *   the AWS SDK validates the shape (requires key + secret) loudly at
+     *   client build instead of silently falling through to IMDS.
+     *
+     * @return array{0: array, 1: array} [credentials, config] with consumed
+     *   dotted keys removed from config.
+     */
+    public static function normalizeCredentials(array $credentials, array $config): array {
+        if ($credentials
+            && array_is_list($credentials)
+            && count($credentials) === 1
+            && is_array($credentials[0])
+        ) {
+            $credentials = $credentials[0];
+        }
+
+        if (!$credentials) {
+            [$dotted, $config] = self::extractDottedValues($config, 'credentials');
+            if ($dotted !== []) {
+                $credentials = $dotted;
+            }
+        }
+
+        return [$credentials, $config];
+    }
+
+    /**
+     * Reassemble a nested map that Winter Boot's flattenByKey split into
+     * dotted keys. Collects every key starting with "$prefix.", splits the
+     * remainder on '.' to any depth, and rebuilds nested arrays
+     * (credentials.a.b.c becomes ['a' => ['b' => ['c' => ...]]]).
+     * Consumed keys are removed from $config; all other keys are untouched.
+     *
+     * @return array{0: array, 1: array} [values, remainingConfig]
+     */
+    public static function extractDottedValues(array $config, string $prefix): array {
+        $values = [];
+        $needle = $prefix . '.';
+        foreach ($config as $key => $value) {
+            if (!is_string($key) || !str_starts_with($key, $needle)) {
+                continue;
+            }
+            $suffix = substr($key, strlen($needle));
+            if ($suffix === '') {
+                continue;
+            }
+            self::setByPath($values, explode('.', $suffix), $value);
+            unset($config[$key]);
+        }
+
+        return [$values, $config];
+    }
+
+    private static function setByPath(array &$target, array $path, mixed $value): void {
+        $segment = array_shift($path);
+        if ($path === []) {
+            $target[$segment] = $value;
+            return;
+        }
+        if (!isset($target[$segment]) || !is_array($target[$segment])) {
+            $target[$segment] = [];
+        }
+        self::setByPath($target[$segment], $path, $value);
     }
 
     public function getConfig(): array {
@@ -70,13 +148,8 @@ class SqsConnection {
             $args['credentials'] = $this->credentials;
         }
 
-        // Use plain PHP stream wrapper HTTP handler instead of Swoole's coroutine HTTP client
-        // to avoid CURLOPT_PROTOCOLS_STR (10318) error which is not supported by Swoole's
-        // cURL implementation when used with AWS SDK's WrappedHttpHandler
-        if (!isset($args['http_handler']) && extension_loaded('swoole')) {
-            $args['http_handler'] = new SwooleHttpHandler();
-        }
-
+        // SqsUtil::buildClient() wires the Swoole HTTP handler for both API
+        // requests and default-chain credential fetching (IMDS/ECS).
         $this->rawClient = SqsUtil::buildClient($args);
     }
 

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace dev\winterframework\sqs;
 
+use Aws\Credentials\CredentialProvider;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Psr7\Response;
 use Psr\Http\Message\RequestInterface;
@@ -23,6 +24,56 @@ use Throwable;
  * CURLOPT_PROTOCOLS_STR is not supported by swoole_curl_setopt().
  */
 class SwooleHttpHandler {
+    /**
+     * Apply Swoole HTTP handling to an AWS SDK client configuration.
+     *
+     * Sets `http_handler` (signed API requests) and, when the app relies on
+     * the default credential chain (no explicit `credentials`), builds a
+     * default credential provider whose IMDS/ECS HTTP fetches use the same
+     * Swoole handler via the `client` option understood by
+     * InstanceProfileProvider and EcsCredentialProvider.
+     *
+     * Without the `client` wiring, credential fetching falls back to
+     * Guzzle/cURL, which fails under Swoole's cURL hook (SWOOLE_HOOK_ALL)
+     * with "Unable to set cURL option CURLOPT_PROTOCOLS_STR (10318)".
+     */
+    public static function applyToClientConfig(array $config): array {
+        if (!extension_loaded('swoole')) {
+            return $config;
+        }
+
+        $httpHandler = $config['http_handler'] ?? new self();
+        $config['http_handler'] = $httpHandler;
+
+        if (!isset($config['credentials'])) {
+            $config['credentials'] = CredentialProvider::defaultProvider(
+                array_merge($config, ['client' => self::credentialHttpClient($httpHandler)])
+            );
+        }
+
+        return $config;
+    }
+
+    /**
+     * HTTP client for default-chain credential fetching (IMDS/ECS).
+     *
+     * Uses the Swoole handler inside coroutines, where Guzzle/cURL fails
+     * under SWOOLE_HOOK_ALL. Outside coroutines (e.g. client construction
+     * during module boot, which S3Client performs eagerly) native cURL is
+     * unaffected by the hook, so the default handler is used there.
+     */
+    private static function credentialHttpClient(callable $httpHandler): callable {
+        $fallback = \Aws\default_http_handler();
+
+        return static function (RequestInterface $request, array $options = []) use ($httpHandler, $fallback) {
+            if (\Swoole\Coroutine::getCid() > 0) {
+                return $httpHandler($request, $options);
+            }
+
+            return $fallback($request, $options);
+        };
+    }
+
     public function __invoke(RequestInterface $request, array $options = []) {
         $uri = $request->getUri();
         $scheme = strtolower($uri->getScheme());
@@ -73,7 +124,10 @@ class SwooleHttpHandler {
         try {
             $ok = $client->execute($path);
             if (!$ok) {
-                $errMsg = $client->errMsg ?: 'Swoole HTTP request failed';
+                // Include method + URI so failures identify the target
+                // (e.g. IMDS vs the SQS endpoint) in SDK error messages.
+                $errMsg = ($client->errMsg ?: 'Swoole HTTP request failed')
+                    . ' (' . $request->getMethod() . ' ' . (string) $uri . ')';
                 return Create::rejectionFor([
                     'exception' => new \RuntimeException($errMsg, intval($client->errCode)),
                     'connection_error' => true,
