@@ -37,7 +37,17 @@ class SwooleHttpHandler {
             $scheme = strtolower($parts['scheme'] ?? ($request['scheme'] ?? 'http'));
             $ssl = $scheme === 'https';
             $host = $parts['host'] ?? '';
-            $port = $parts['port'] ?? ($ssl ? 443 : 80);
+            // opensearch-php keeps the connection port out of the URL: the
+            // Host header carries it only when port_in_header is enabled,
+            // but Connection ALWAYS sets CURLOPT_PORT from the configured
+            // host (default 9200). Without this, non-default ports silently
+            // fall back to 443/80 and every request fails ("No alive nodes").
+            $curlOpts = $request['client']['curl'] ?? [];
+            $portKey = defined('CURLOPT_PORT') ? CURLOPT_PORT : 3;
+            $curlPort = (is_array($curlOpts) && isset($curlOpts[$portKey]))
+                ? (int) $curlOpts[$portKey]
+                : null;
+            $port = $parts['port'] ?? $curlPort ?? ($ssl ? 443 : 80);
 
             $path = $parts['path'] ?? '/';
             if ($path === '') {
