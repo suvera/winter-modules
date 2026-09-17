@@ -27,9 +27,9 @@ use SessionHandlerInterface;
  */
 class RedisSessionStore implements SessionHandlerInterface, SessionIdentityStore {
     public function __construct(
-        private PhpRedisAbstractTemplate $client,
-        private string $keyPrefix = 'wbsess:',
-        private int $ttlSecs = 3600
+        protected PhpRedisAbstractTemplate $client,
+        protected string $keyPrefix = 'wbsess:',
+        protected int $ttlSecs = 3600
     ) {
     }
 
@@ -94,7 +94,7 @@ class RedisSessionStore implements SessionHandlerInterface, SessionIdentityStore
         return 0;
     }
 
-    private function applyTtl(string $id): void {
+    protected function applyTtl(string $id): void {
         if ($this->ttlSecs > 0) {
             $this->client->expire($this->key($id), $this->ttlSecs);
         } else {
@@ -102,7 +102,7 @@ class RedisSessionStore implements SessionHandlerInterface, SessionIdentityStore
         }
     }
 
-    private function key(string $id): string {
+    protected function key(string $id): string {
         return $this->keyPrefix . $id;
     }
 }
