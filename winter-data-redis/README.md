@@ -229,3 +229,32 @@ phpredis:
 private PhpRedisTokenTemplate $redis;
 ```
 
+### 6. RedisSessionStore
+
+Session storage for Winter Boot request sessions (`dev\winterframework\web\session\SessionManager` in `suvera/winter-boot`). Keeps each session as a hash under `keyPrefix + sessionId` (fields `data`/`username`/`type`) with a native Redis TTL, so expiry needs no sweeping. Takes any template above — single, array, sentinel, cluster or token — since all expose the same hash commands. Implements the session identity contract: `username`/`type` set at login round-trip on every later request, and a save carrying no name keeps the stored one.
+
+#### PHP Example
+
+```phpt
+use dev\winterframework\data\redis\phpredis\PhpRedisTemplate;
+use dev\winterframework\data\redis\session\RedisSessionStore;
+use dev\winterframework\stereotype\Autowired;
+use dev\winterframework\stereotype\Bean;
+use dev\winterframework\stereotype\Configuration;
+
+#[Configuration]
+class SessionConfig
+{
+    #[Autowired]
+    protected PhpRedisTemplate $redis;  // or #[Autowired("redisNode02Bean")] with several
+
+    #[Bean]
+    public function sessionStore(): \SessionHandlerInterface
+    {
+        return new RedisSessionStore($this->redis, keyPrefix: 'myapp:sess:', ttlSecs: 3600);
+    }
+}
+```
+
+With `ttlSecs <= 0` keys persist until explicitly destroyed. The declared `#[Bean]` return type must be `\SessionHandlerInterface` — that is what replaces the framework's default file store.
+
