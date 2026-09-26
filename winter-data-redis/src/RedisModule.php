@@ -6,6 +6,7 @@ use dev\winterframework\core\app\WinterModule;
 use dev\winterframework\core\context\ApplicationContext;
 use dev\winterframework\core\context\ApplicationContextData;
 use dev\winterframework\core\context\WinterBeanProviderContext;
+use dev\winterframework\data\redis\consumer\ConsumerConfiguration;
 use dev\winterframework\data\redis\phpredis\PhpRedisArrayTemplate;
 use dev\winterframework\data\redis\phpredis\PhpRedisClusterTemplate;
 use dev\winterframework\data\redis\phpredis\PhpRedisSentinelTemplate;
@@ -28,6 +29,8 @@ class RedisModule implements WinterModule {
         if (!extension_loaded('redis')) {
             throw new ModuleException("RedisModule requires *redis* extension in PHP runtime");
         }
+
+        $this->addBeanComponent($ctx, $ctxData, RedisQueueServiceImpl::class);
     }
 
     public function begin(ApplicationContext $ctx, ApplicationContextData $ctxData): void {
@@ -39,6 +42,48 @@ class RedisModule implements WinterModule {
         $this->buildRedisClusters($config, $ctx, $ctxData);
         $this->buildRedisSentinel($config, $ctx, $ctxData);
         $this->buildRedisTokenBased($config, $ctx, $ctxData);
+        $this->buildQueueConsumers($config, $ctx);
+        $this->startRedisQueue($ctx);
+    }
+
+    protected function startRedisQueue(ApplicationContext $ctx): void {
+        /** @var RedisQueueServiceImpl $service */
+        $service = $ctx->beanByClass(RedisQueueServiceImpl::class);
+
+        $service->beginConsume();
+    }
+
+    protected function getDefaults(array $list): array {
+        $defaults = [];
+        foreach ($list as $data) {
+            if (($data['name'] ?? '') == '__default__') {
+                unset($data['name']);
+                $defaults = array_merge($defaults, $data);
+            }
+        }
+
+        return $defaults;
+    }
+
+    protected function buildQueueConsumers(array $config, ApplicationContext $ctx): void {
+        $consumers = $config['redis.consumers'] ?? [];
+        if (!is_array($consumers)) {
+            return;
+        }
+
+        /** @var RedisQueueServiceImpl $service */
+        $service = $ctx->beanByClass(RedisQueueServiceImpl::class);
+
+        $consumerDefaults = $this->getDefaults($consumers);
+
+        foreach ($consumers as $data) {
+            if (($data['name'] ?? '') == '__default__') {
+                continue;
+            }
+
+            $consumerConfig = array_merge($consumerDefaults, $data);
+            $service->addConsumer(new ConsumerConfiguration($consumerConfig, $ctx));
+        }
     }
 
     protected function buildRedisSingles(

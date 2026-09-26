@@ -211,6 +211,7 @@ class PhpRedisClusterTemplate implements PhpRedisAbstractTemplate {
      */
     public function __call(string $name, array $arguments): mixed {
         $this->lastAccessTime = time();
+        $this->dropForkedConnection();
 
         if (is_null($this->redis)) {
             $this->reConnect();

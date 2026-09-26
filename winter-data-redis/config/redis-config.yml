@@ -1,3 +1,32 @@
+redis:
+    # Reliable queue consumers (Redis Streams + consumer groups, auto-started
+    # like the Kafka/SQS modules). Each consumer reads its own stream with its
+    # own group: at-least-once delivery, XACK on success, XCLAIM redelivery of
+    # stale pending entries, dead-letter stream for poison messages.
+    consumers:
+        -   name: __default__
+            group: winter-queue-group
+            workerNum: 1
+            blockMs: 5000            # XREADGROUP BLOCK per iteration
+            batchSize: 10            # max entries per read
+            pollIntervalMs: 0        # extra sleep between iterations
+            claimIdleMs: 30000       # reclaim PEL entries idle this long
+            reclaimIntervalMs: 5000  # how often to scan for stale entries
+            maxDeliveries: 5         # then moved to deadLetterStream
+            retries: 3               # in-worker retries on transient errors
+            retryWaitMs: 300
+            transientExceptions: []
+            # deadLetterStream: "{stream}-dlq"
+            # trimMaxLen: 100000     # XADD MAXLEN ~ (0 = unbounded)
+
+        -   name: order-events-consumer
+            redis: beanUniqueName    # redis bean name; omit for default bean
+            stream: order-events
+            group: order-events-group
+            workerNum: 2
+            workerClass: some\package\className
+            deadLetterStream: order-events-dlq
+
 phpredis:
     singles:
         -   name: beanUniqueName

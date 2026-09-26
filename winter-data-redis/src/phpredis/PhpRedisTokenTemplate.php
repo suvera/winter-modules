@@ -257,6 +257,7 @@ class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
     private bool $strictTokenRing = false;
     private HashProvider $hashProvider;
     protected int $idleTimeout = 0;
+    private int $connectedPid = 0;
 
     public function __construct(private array $config) {
         $this->redis = [];
@@ -320,6 +321,13 @@ class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
      * @throws
      */
     public function __call(string $name, array $arguments): mixed {
+        // Same fork hazard as PhpRedisTrait::dropForkedConnection: connections
+        // opened pre-fork are shared across workers, mixing up replies.
+        if ($this->connectedPid !== getmypid()) {
+            $this->redis = [];
+            $this->connectedPid = getmypid();
+        }
+
         $hash = 0;
         if (isset($arguments[0]) && is_scalar($arguments[0])) {
             $hash = $this->hashProvider->getHashInt($arguments[0]);

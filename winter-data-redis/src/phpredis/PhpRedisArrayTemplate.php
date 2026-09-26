@@ -266,6 +266,7 @@ class PhpRedisArrayTemplate implements PhpRedisAbstractTemplate {
      */
     public function __call(string $name, array $arguments): mixed {
         $this->lastAccessTime = time();
+        $this->dropForkedConnection();
 
         if (substr($name, -6) == '_xwait') {
             $funcName = substr($name, 0, -6);

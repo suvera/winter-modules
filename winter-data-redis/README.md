@@ -258,3 +258,68 @@ class SessionConfig
 
 With `ttlSecs <= 0` keys persist until explicitly destroyed. The declared `#[Bean]` return type must be `\SessionHandlerInterface` — that is what replaces the framework's default file store.
 
+### 7. Reliable Queue Consumers (Redis Streams)
+
+Stream-backed reliable queue with auto-started consumers, mirroring the
+Kafka/SQS modules (Java equivalent: Redisson PRO Reliable Queue).
+At-least-once delivery per consumer group: entries are `XACK`ed only after
+your worker consumes them; crashed-worker leftovers stay pending and are
+reclaimed via `XCLAIM` after `claimIdleMs`; entries redelivered past
+`maxDeliveries` (or failing permanently) move to `deadLetterStream`.
+
+#### Configuration for consumers (redis-config.yml)
+
+```yaml
+redis:
+    consumers:
+        -   name: order-events-consumer
+            redis: redisNode01Bean   # omit to use the default redis bean
+            stream: order-events
+            group: order-events-group
+            workerNum: 2
+            workerClass: App\Queue\OrderEventsConsumer
+            deadLetterStream: order-events-dlq
+            blockMs: 5000
+            batchSize: 10
+            claimIdleMs: 30000
+            maxDeliveries: 5
+            retries: 3
+            retryWaitMs: 300
+            transientExceptions: []
+```
+
+`stream` defaults to the consumer `name`, `group` to `<stream>-group`.
+Consumers start automatically as Swoole worker processes
+(`workerNum` processes per consumer).
+
+#### PHP Example
+
+```phpt
+use dev\winterframework\data\redis\consumer\AbstractConsumer;
+use dev\winterframework\data\redis\consumer\ConsumerRecords;
+use dev\winterframework\data\redis\RedisQueueService;
+
+class OrderEventsConsumer extends AbstractConsumer
+{
+    public function consume(ConsumerRecords $records): void
+    {
+        foreach ($records as $record) {
+            $payload = $record->getPayload(); // "payload" stream field
+            // ... process; throw on transient failure to retry/redeliver
+        }
+    }
+}
+
+#[Autowired]
+private RedisQueueService $queues;
+
+$this->queues->send('order-events-consumer', ['orderId' => 42]);
+$this->queues->send('order-events', 'raw-stream-name-also-works');
+```
+
+Only transient exceptions listed in `transientExceptions` are retried
+(`retries` in-worker attempts, then redelivery via the pending list).
+Any other exception is permanent: the message goes to `deadLetterStream`
+(or is dropped with an error log when none is configured) so one poison
+message never blocks the stream.
+
