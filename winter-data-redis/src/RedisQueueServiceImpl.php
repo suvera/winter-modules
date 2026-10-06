@@ -46,14 +46,15 @@ class RedisQueueServiceImpl implements RedisQueueService {
 
         $payload = is_string($message)
             ? $message
-            : json_encode($message, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            : json_encode($message, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
+        // Caller fields first: the reserved payload/createdAt fields always win.
         $entry = array_merge(
+            array_map(self::stringifyField(...), $fields),
             [
                 'payload' => strval($payload),
                 'createdAt' => strval(intval(microtime(true) * 1000)),
-            ],
-            $fields
+            ]
         );
 
         $trimMaxLen = $config?->getTrimMaxLen() ?? 0;
@@ -63,7 +64,22 @@ class RedisQueueServiceImpl implements RedisQueueService {
             $id = $redis->xadd($stream, '*', $entry);
         }
 
-        return self::normalizeEntryId($id, $stream, self::lastError($redis));
+        $entryId = self::normalizeEntryId($id, $stream, self::lastError($redis));
+        if ($entryId === '') {
+            throw new RedisQueueException('Could not send message to Redis stream ' . $stream);
+        }
+
+        return $entryId;
+    }
+
+    protected static function stringifyField(mixed $value): string {
+        if (is_string($value)) {
+            return $value;
+        }
+        if (is_scalar($value) || is_null($value)) {
+            return strval($value);
+        }
+        return json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     }
 
     protected static function lastError(PhpRedisAbstractTemplate $redis): string {
@@ -118,13 +134,19 @@ class RedisQueueServiceImpl implements RedisQueueService {
             return;
         }
 
-        RedisUtil::getRedisBean($this->appCtx)->xgroup(
-            'CREATE',
-            $consumerOrStream,
-            $consumerOrStream . '-group',
-            '$',
-            true
-        );
+        try {
+            $this->resolveRedis(null, $consumerOrStream)->xgroup(
+                'CREATE',
+                $consumerOrStream,
+                $consumerOrStream . '-group',
+                '0',
+                true
+            );
+        } catch (\Throwable $e) {
+            if (stripos($e->getMessage(), 'BUSYGROUP') === false) {
+                throw $e;
+            }
+        }
     }
 
     public function queueLength(string $consumerOrStream): int {
@@ -219,7 +241,10 @@ class RedisQueueServiceImpl implements RedisQueueService {
         }
 
         if ($this->appCtx->hasBeanByName($fallback)) {
-            return $this->appCtx->beanByName($fallback);
+            $bean = $this->appCtx->beanByName($fallback);
+            if ($bean instanceof PhpRedisAbstractTemplate) {
+                return $bean;
+            }
         }
 
         try {

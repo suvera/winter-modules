@@ -21,7 +21,7 @@ class ConsumerRebalanceCallbackDefault implements ConsumerRebalanceCallback {
     /**
      * @throws
      */
-    public function __invoke(KafkaConsumer $kafka, mixed $err, array $partitions = null): void {
+    public function __invoke(KafkaConsumer $kafka, mixed $err, ?array $partitions = null): void {
         switch ($err) {
             case RD_KAFKA_RESP_ERR__ASSIGN_PARTITIONS:
                 self::logInfo("Assigning Kafka partitions: " . KafkaUtil::toPartitionsString($partitions));

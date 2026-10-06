@@ -5,6 +5,7 @@ namespace dev\winterframework\dtce\task;
 
 use dev\winterframework\dtce\task\storage\TaskIOStorageHandler;
 use dev\winterframework\dtce\task\worker\TaskOutput;
+use dev\winterframework\util\SerializationUtil;
 
 class TaskResult {
     protected ?TaskOutput $data = null;
@@ -34,10 +35,11 @@ class TaskResult {
         $stream = $this->storage->getInputStream($this->dataId);
         $data = $stream->read();
 
-        /** @var TaskOutput|false $obj */
-        $obj = unserialize($data);
+        // Corrupt data, or a class outside winter.security.unserialize.allowedClasses
+        // (__PHP_Incomplete_Class), is not a TaskOutput: leave the result empty.
+        $obj = SerializationUtil::unserialize(strval($data), true);
 
-        if ($obj !== false) {
+        if ($obj instanceof TaskOutput) {
             $this->data = $obj;
         }
 

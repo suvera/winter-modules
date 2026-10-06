@@ -39,7 +39,8 @@ class SqsWorkerProcess extends ServerWorkerProcess {
     }
 
     public function getProcessId(): string {
-        return 'sqs-consumer-' . $this->workerId;
+        // Unique per consumer: the server pid table is keyed by this id.
+        return 'sqs-consumer-' . $this->consumer->getName() . '-' . $this->workerId;
     }
 
     protected function run(): void {
@@ -53,7 +54,7 @@ class SqsWorkerProcess extends ServerWorkerProcess {
             . ',  connection: ' . $this->consumer->getConnectionName());
 
         $workerClass = $this->consumer->getWorkerClass();
-        self::logInfo('Creating worker instance of class: ' . $workerClass);
+        self::logDebug('Creating worker instance of class: ' . $workerClass);
         /** @var Consumer $worker */
         $worker = ReflectionUtil::createAutoWiredObject(
             $this->appCtx,
@@ -61,23 +62,33 @@ class SqsWorkerProcess extends ServerWorkerProcess {
             $this->appCtx,
             $this->consumer
         );
-        self::logInfo('Worker instance created: ' . get_class($worker));
+        self::logDebug('Worker instance created: ' . get_class($worker));
 
         $pollIntervalMs = intval($this->consumer->getConfigVal('pollIntervalMs', 0));
-        self::logInfo('Entering SQS poll loop, pollIntervalMs=' . $pollIntervalMs);
+        self::logDebug('Entering SQS poll loop, pollIntervalMs=' . $pollIntervalMs);
 
         while (true) {
             $records = $this->receiveRecords();
             self::logDebug('Received ' . $records->count() . ' messages from queue ' . $queueName);
 
             if ($records->count() > 0) {
-                $this->consumerRecords($records, $worker);
-                $this->deleteRecords($records);
+                $this->handleBatch($records, $worker);
             }
 
             if ($pollIntervalMs > 0) {
                 usleep($pollIntervalMs * 1000);
             }
+        }
+    }
+
+    /**
+     * Delete only what the worker consumed. Failed messages stay on the
+     * queue and come back after their visibility timeout, so the queue's
+     * redrive policy / dead-letter queue still applies.
+     */
+    protected function handleBatch(ConsumerRecords $records, Consumer $worker): void {
+        if ($this->consumerRecords($records, $worker)) {
+            $this->deleteRecords($records);
         }
     }
 
@@ -127,16 +138,25 @@ class SqsWorkerProcess extends ServerWorkerProcess {
         }
 
         try {
-            $this->consumer->getRawClient()->deleteMessageBatch([
+            $result = $this->consumer->getRawClient()->deleteMessageBatch([
                 'QueueUrl' => $this->consumer->resolveQueueUrl(),
                 'Entries' => $handles,
             ]);
+            foreach ($result['Failed'] ?? [] as $failed) {
+                self::logError('SQS delete failed for message ' . ($failed['Id'] ?? '?')
+                    . ' (' . ($failed['Code'] ?? '') . '): ' . ($failed['Message'] ?? '')
+                    . '; it will be redelivered');
+            }
         } catch (Throwable $e) {
             self::logException($e);
         }
     }
 
-    protected function consumerRecords(ConsumerRecords $records, Consumer $worker): void {
+    /**
+     * Hand the batch to the worker, retrying transient failures.
+     * Returns true when the worker consumed it.
+     */
+    protected function consumerRecords(ConsumerRecords $records, Consumer $worker): bool {
         $trials = $this->consumer->getRetries();
         $reTriableExceptions = $this->consumer->getTransientExceptions();
         $retryWaitMs = $this->consumer->getRetryWaitMs();
@@ -146,17 +166,19 @@ class SqsWorkerProcess extends ServerWorkerProcess {
             try {
                 $worker->consume($records);
 
-                return;
+                return true;
             } catch (Throwable $e) {
                 self::logException($e);
-                if (ExceptionUtils::inExceptions($e, $reTriableExceptions)) {
+                if ($trials > 0 && ExceptionUtils::inExceptions($e, $reTriableExceptions)) {
                     usleep($trials * $retryWaitMs * 1000);
                     continue;
                 }
 
-                return;
+                return false;
             }
         }
+
+        return false;
     }
 
 }

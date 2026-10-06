@@ -5,16 +5,22 @@ declare(strict_types=1);
 namespace dev\winterframework\kafka\producer;
 
 use dev\winterframework\core\context\ApplicationContext;
+use dev\winterframework\core\context\WinterServer;
 use dev\winterframework\kafka\KafkaLogCallback;
 use dev\winterframework\kafka\KafkaLogCallbackDefault;
 use dev\winterframework\kafka\KafkaUtil;
+use dev\winterframework\kafka\exception\KafkaException;
 use dev\winterframework\util\log\Wlf4p;
 use RdKafka\Conf as RdKafkaConf;
 use RdKafka\Producer;
 use RdKafka\ProducerTopic;
+use Throwable;
 
 class ProducerConfiguration {
     use Wlf4p;
+
+    private const INTERNAL_PROPERTIES = ['config', 'ctx', 'conf', 'rawProducer', 'topicObject',
+        'producerPid', 'transactionsInitialized', 'abandoned', 'defaults'];
 
     private static array $defaults = [
         'metadata.broker.list' => null,
@@ -78,6 +84,11 @@ class ProducerConfiguration {
     private RdKafkaConf $conf;
     private Producer $rawProducer;
     private ProducerTopic $topicObject;
+    private int $producerPid = 0;
+    private bool $transactionsInitialized = false;
+
+    /** Producers left behind by fork()/fatal errors; kept so destructors never run. */
+    private static array $abandoned = [];
 
     /**
      * ConsumerConfiguration constructor.
@@ -91,7 +102,7 @@ class ProducerConfiguration {
         }
 
         foreach ($config as $key => $value) {
-            if (property_exists($this, $key) && $key != 'config') {
+            if (property_exists($this, $key) && !in_array($key, self::INTERNAL_PROPERTIES, true)) {
                 $this->$key = $value;
             } else {
                 $this->config[$key] = $value;
@@ -114,38 +125,110 @@ class ProducerConfiguration {
      * @return RdKafkaConf
      */
     public function getConf(): RdKafkaConf {
-        if (!isset($this->conf)) {
-            $this->buildProducer();
-        }
-
+        $this->ensureProducer();
         return $this->conf;
     }
 
+    /**
+     * Build the producer on first use in this process. A producer inherited
+     * through fork() (Swoole forks workers after modules boot) has no
+     * librdkafka threads in the child: it is abandoned, never destroyed
+     * (its destructor would wait on those threads), and rebuilt.
+     */
+    protected function ensureProducer(): void {
+        if (isset($this->conf) && $this->producerPid === getmypid()) {
+            return;
+        }
+        if (isset($this->rawProducer)) {
+            self::$abandoned[] = $this->rawProducer;
+        }
+        $this->buildProducer();
+    }
+
     protected function buildProducer(): void {
-        $this->conf = new RdKafkaConf();
+        $conf = new RdKafkaConf();
         foreach ($this->config as $key => $value) {
-            $this->conf->set($key, strval($value));
+            if ($key === 'transactional.id') {
+                continue;
+            }
+            $conf->set($key, strval($value));
         }
 
         if ($this->isTransactionEnabled()) {
             KafkaUtil::logDebug('kafka transactions enabled');
-            $this->conf->set('transactional.id', 'TRANSACTION-' . $this->getName());
+            $conf->set('transactional.id', $this->buildTransactionalId());
         }
         if ($this->logCallback && is_a($this->logCallback, KafkaLogCallback::class, true)) {
             $cb = $this->logCallback;
-            $this->conf->setLogCb(new $cb($this, $this->ctx));
+            $conf->setLogCb(new $cb($this, $this->ctx));
         }
 
-        $this->rawProducer = new Producer($this->conf);
+        $this->conf = $conf;
+        $this->rawProducer = new Producer($conf);
+        unset($this->topicObject);
+        if ($this->topic !== '') {
+            $this->topicObject = $this->rawProducer->newTopic($this->topic);
+        }
+        $this->producerPid = getmypid();
+        $this->transactionsInitialized = false;
+    }
+
+    /**
+     * A transactional.id must belong to exactly one live producer: Kafka
+     * fences the older one whenever another producer initialises the same
+     * id. Every Swoole worker has its own producer, so the id is the
+     * configured prefix (default "TRANSACTION-<name>") plus host and worker.
+     * The Swoole worker id is stable across worker restarts, which lets a
+     * restarted worker fence its predecessor's unfinished transaction.
+     */
+    protected function buildTransactionalId(): string {
+        $prefix = strval($this->config['transactional.id'] ?? ('TRANSACTION-' . $this->getName()));
+
+        $worker = 'p' . getmypid();
+        try {
+            if ($this->ctx->hasBeanByClass(WinterServer::class)) {
+                /** @var WinterServer $wServer */
+                $wServer = $this->ctx->beanByClass(WinterServer::class);
+                $workerId = $wServer->getServer()->worker_id ?? -1;
+                if (is_int($workerId) && $workerId >= 0) {
+                    $worker = 'w' . $workerId;
+                }
+            }
+        } catch (Throwable) {
+        }
+
+        return $prefix . '-' . gethostname() . '-' . $worker;
+    }
+
+    /**
+     * initTransactions() may run only once per producer instance.
+     */
+    public function ensureTransactionsInitialized(int $timeoutMs): void {
+        $this->ensureProducer();
+        if ($this->transactionsInitialized) {
+            return;
+        }
+        $this->rawProducer->initTransactions($timeoutMs);
+        $this->transactionsInitialized = true;
+    }
+
+    /**
+     * Drop the producer after a fatal error; the next send builds a new one.
+     */
+    public function resetProducer(): void {
+        if (isset($this->rawProducer) && $this->producerPid !== getmypid()) {
+            self::$abandoned[] = $this->rawProducer;
+        }
+        unset($this->conf, $this->rawProducer, $this->topicObject);
+        $this->producerPid = 0;
+        $this->transactionsInitialized = false;
     }
 
     /**
      * @return Producer
      */
     public function getRawProducer(): Producer {
-        if (!isset($this->conf)) {
-            $this->buildProducer();
-        }
+        $this->ensureProducer();
         return $this->rawProducer;
     }
 
@@ -153,9 +236,9 @@ class ProducerConfiguration {
      * @return ProducerTopic
      */
     public function getTopicObject(): ProducerTopic {
-        if (!isset($this->conf)) {
-            $this->buildProducer();
-            $this->topicObject = $this->rawProducer->newTopic($this->topic);
+        $this->ensureProducer();
+        if (!isset($this->topicObject)) {
+            throw new KafkaException('Kafka producer "' . $this->getName() . '" has no topic configured');
         }
         return $this->topicObject;
     }

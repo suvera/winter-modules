@@ -213,18 +213,18 @@ class SqsServiceImpl implements SqsService {
     }
 
     public function beginConsume(): void {
-        self::logInfo('beginConsume() called, consumerStarted=' . ($this->consumerStarted ? 'true' : 'false')
+        self::logDebug('beginConsume() called, consumerStarted=' . ($this->consumerStarted ? 'true' : 'false')
             . ', consumers count=' . $this->consumers->count());
 
         if ($this->consumerStarted) {
-            self::logInfo('beginConsume() already started, skipping');
+            self::logDebug('beginConsume() already started, skipping');
             return;
         }
 
         foreach ($this->consumers as $consumer) {
             /** @var ConsumerConfiguration $consumer */
             $workerNum = $consumer->getWorkerNum();
-            self::logInfo('beginConsume() processing consumer: ' . $consumer->getName()
+            self::logDebug('beginConsume() processing consumer: ' . $consumer->getName()
                 . ', workerNum=' . $workerNum);
             for ($i = 0; $i < $workerNum; $i++) {
                 $this->startConsumer($consumer, $i);
@@ -232,7 +232,7 @@ class SqsServiceImpl implements SqsService {
         }
 
         $this->consumerStarted = true;
-        self::logInfo('beginConsume() completed, consumerStarted set to true');
+        self::logDebug('beginConsume() completed, consumerStarted set to true');
     }
 
 }

@@ -49,7 +49,7 @@ class ConsumerConfiguration {
         }
 
         foreach ($config as $key => $value) {
-            if (property_exists($this, $key) && $key != 'config') {
+            if (property_exists($this, $key) && !in_array($key, ['config', 'ctx', 'redisTpl'], true)) {
                 $this->$key = $value;
             } else {
                 $this->config[$key] = $value;
@@ -86,6 +86,10 @@ class ConsumerConfiguration {
     /**
      * Create the consumer group if missing (MKSTREAM creates the stream too).
      * Safe to call from every worker: BUSYGROUP (already exists) is ignored.
+     *
+     * The group starts at "0", not "$": entries sent before the first worker
+     * created the group (e.g. by a web worker right after boot) must still
+     * be delivered.
      */
     public function ensureConsumerGroup(): void {
         if (!$this->autoCreateGroup) {
@@ -93,7 +97,7 @@ class ConsumerConfiguration {
         }
 
         try {
-            $this->getRedis()->xgroup('CREATE', $this->stream, $this->group, '$', true);
+            $this->getRedis()->xgroup('CREATE', $this->stream, $this->group, '0', true);
         } catch (Throwable $e) {
             if (stripos($e->getMessage(), 'BUSYGROUP') === false) {
                 throw $e;

@@ -60,6 +60,16 @@ s3:
         retries: 5
 ```
 
+## HTTP under Swoole
+
+Inside coroutines, S3 requests go through Swoole's coroutine HTTP client
+(`dev\winterframework\s3\SwooleHttpHandler`); outside coroutines (boot, CLI)
+the SDK's cURL handler is used. `http` options are honoured: `timeout` /
+`connect_timeout` (default 0 = no limit), `verify` (TLS peer verification is
+on by default; `false` or a CA bundle path), `proxy`, and the `SaveAs` /
+`sink` target. Request and response bodies are buffered in memory, so use
+multipart uploads for very large objects.
+
 
 ```yaml
 #[Autowired]

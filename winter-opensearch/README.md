@@ -30,7 +30,10 @@ opensearch:
         # username: admin
         # password: admin
         # retries: 3
-        # ssl_verification: true
+        # ssl_verification: true   # true (default CA bundle) | false | /path/to/ca.pem
+        # timeout: 30              # seconds, 0 = no limit
+        # connect_timeout: 5
+        # proxy: http://proxy.local:3128
         migrations:
             enabled: true
 ```

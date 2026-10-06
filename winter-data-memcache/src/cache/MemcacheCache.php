@@ -10,12 +10,20 @@ use dev\winterframework\cache\ValueRetrievalException;
 use dev\winterframework\cache\ValueWrapper;
 use dev\winterframework\data\memcache\mcd\MemcachedTemplate;
 use dev\winterframework\exception\IllegalStateException;
+use dev\winterframework\util\SerializationUtil;
 use dev\winterframework\util\log\Wlf4p;
 use Throwable;
 
+/**
+ * Cache over Memcached. Entry keys carry a per-cache namespace version;
+ * clear() bumps the version, so it only affects this cache (memcached has
+ * no prefix delete) and old entries simply age out / get evicted.
+ */
 class MemcacheCache implements Cache {
     const PREFIX = 'winter.cache.';
     const KEY_SUFFIX = '.key.';
+    private const SERIALIZED_FALSE = 'b:0;';
+    private const MAX_KEY_LENGTH = 250;
     use Wlf4p;
 
     public function __construct(
@@ -28,16 +36,36 @@ class MemcacheCache implements Cache {
         }
     }
 
+    protected function versionKey(): string {
+        return self::PREFIX . $this->name . '.version';
+    }
+
+    /**
+     * Current namespace version. Seeded from the clock so a version key lost
+     * to eviction never comes back with a value used before.
+     */
+    protected function version(): string {
+        $version = $this->client->get($this->versionKey());
+        if ($version === false) {
+            $this->client->add($this->versionKey(), strval(intval(microtime(true) * 1000)), 0);
+            $version = $this->client->get($this->versionKey());
+        }
+        return strval($version);
+    }
+
     protected function buildKey(string $key): string {
-        return self::PREFIX . $this->name . self::KEY_SUFFIX . $key;
+        $finalKey = self::PREFIX . $this->name . '.v' . $this->version() . self::KEY_SUFFIX . $key;
+        // memcached keys: max 250 bytes, no whitespace/control characters
+        if (strlen($finalKey) > self::MAX_KEY_LENGTH || preg_match('/[\x00-\x20\x7f]/', $finalKey)) {
+            $finalKey = self::PREFIX . $this->name . '.v' . $this->version() . '.h.' . hash('sha256', $key);
+        }
+        return $finalKey;
     }
 
     public function clear(): void {
         try {
-            $keys = $this->client->getAllKeys();
-
-            foreach ($keys as $key) {
-                $this->client->delete($key);
+            if ($this->client->increment($this->versionKey()) === false) {
+                $this->client->set($this->versionKey(), strval(intval(microtime(true) * 1000)), 0);
             }
         } catch (Throwable $e) {
             self::logException($e);
@@ -46,8 +74,7 @@ class MemcacheCache implements Cache {
 
     public function evict(string $key): bool {
         try {
-            $finalKey = $this->buildKey($key);
-            return $this->client->delete($finalKey);
+            return boolval($this->client->delete($this->buildKey($key)));
         } catch (Throwable $e) {
             self::logException($e);
         }
@@ -63,32 +90,51 @@ class MemcacheCache implements Cache {
         return false;
     }
 
+    /**
+     * Returns SimpleValueWrapper::$NULL_VALUE on a miss (memcached answers
+     * false for an absent key), which CacheableAspect treats as a miss.
+     */
     public function get(string $key): ValueWrapper {
-        $data = null;
         try {
             $data = $this->client->get($this->buildKey($key));
         } catch (Throwable $e) {
             self::logException($e);
+            return SimpleValueWrapper::$NULL_VALUE;
         }
-        return is_null($data) ? SimpleValueWrapper::$NULL_VALUE : new SimpleValueWrapper($data);
+
+        if (!is_string($data)) {
+            return SimpleValueWrapper::$NULL_VALUE;
+        }
+
+        $value = SerializationUtil::unserialize($data, true);
+        if ($value === false && $data !== self::SERIALIZED_FALSE) {
+            self::logWarning('Cache "' . $this->name . '" holds an undecodable entry, treated as a miss');
+            return SimpleValueWrapper::$NULL_VALUE;
+        }
+
+        return new SimpleValueWrapper($value);
     }
 
     public function getOrProvide(string $key, callable $valueProvider): ValueWrapper {
         $data = $this->get($key);
-        $value = null;
-        if (is_null($data) && $data !== false) {
-            try {
-                $value = $valueProvider();
-                if (!is_null($value)) {
-                    $this->put($key, $value);
-                }
-            } catch (Throwable $e) {
-                throw new ValueRetrievalException('Provider to cache value is failed for "'
-                    . $key . '"', 0, $e
-                );
-            }
+        if ($data !== SimpleValueWrapper::$NULL_VALUE) {
+            return $data;
         }
-        return is_null($value) ? SimpleValueWrapper::$NULL_VALUE : new SimpleValueWrapper($value);
+
+        try {
+            $value = $valueProvider();
+        } catch (Throwable $e) {
+            throw new ValueRetrievalException('Provider to cache value is failed for "'
+                . $key . '"', 0, $e
+            );
+        }
+
+        if (is_null($value)) {
+            return SimpleValueWrapper::$NULL_VALUE;
+        }
+        $this->put($key, $value);
+
+        return new SimpleValueWrapper($value);
     }
 
     public function getAsType(string $key, string $class): ?object {
@@ -131,29 +177,29 @@ class MemcacheCache implements Cache {
         if (is_null($value)) {
             return;
         }
-        $ttl = $this->calcTtl();
 
-        $value = serialize($value);
         try {
-            $finalKey = $this->buildKey($key);
-            $this->client->set($finalKey, $value, $ttl);
+            $this->client->set($this->buildKey($key), serialize($value), $this->calcTtl());
         } catch (Throwable $e) {
             self::logException($e);
         }
     }
 
+    /**
+     * Stores the value only when the key is absent (memcached ADD) and
+     * returns the value now held by the cache.
+     */
     public function putIfAbsent(string $key, mixed $value): ValueWrapper {
         if (is_null($value)) {
             return SimpleValueWrapper::$NULL_VALUE;
         }
-        $ttl = $this->calcTtl();
-        $value = serialize($value);
 
         try {
-            $finalKey = $this->buildKey($key);
-
-            if ($this->client->get($finalKey) !== false) {
-                $this->client->set($finalKey, $value, $ttl);
+            if (!$this->client->add($this->buildKey($key), serialize($value), $this->calcTtl())) {
+                $existing = $this->get($key);
+                if ($existing !== SimpleValueWrapper::$NULL_VALUE) {
+                    return $existing;
+                }
             }
         } catch (Throwable $e) {
             self::logException($e);

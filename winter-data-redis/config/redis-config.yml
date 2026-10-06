@@ -53,7 +53,7 @@ phpredis:
             host: 127.0.0.1
             port: 6379
             timeout: 0
-            retryTnterval:
+            retryInterval:
             readTimeout: 0
 
     arrays:

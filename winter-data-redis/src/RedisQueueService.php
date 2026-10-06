@@ -10,7 +10,10 @@ interface RedisQueueService {
 
     /**
      * Append a message to a stream. $consumerOrStream is a consumer name first,
-     * then a raw stream name. Returns the stream entry id.
+     * then a raw stream name. Returns the stream entry id; throws
+     * RedisQueueException when Redis does not accept the entry. $fields are
+     * stored next to the reserved "payload"/"createdAt" fields, which they
+     * cannot override.
      */
     public function send(
         string $consumerOrStream,

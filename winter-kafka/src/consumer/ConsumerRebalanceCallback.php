@@ -10,5 +10,5 @@ interface ConsumerRebalanceCallback {
 
     public function __construct(ConsumerConfiguration $config, ApplicationContext $ctx);
 
-    public function __invoke(KafkaConsumer $kafka, mixed $err, array $partitions = null): void;
+    public function __invoke(KafkaConsumer $kafka, mixed $err, ?array $partitions = null): void;
 }

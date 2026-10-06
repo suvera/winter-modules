@@ -22,7 +22,7 @@ class DtceModule implements WinterModule {
 
     public function init(ApplicationContext $ctx, ApplicationContextData $ctxData): void {
         if (!extension_loaded('swoole')) {
-            throw new ModuleException("KafkaModule requires *swoole* extension in PHP runtime");
+            throw new ModuleException("DtceModule requires *swoole* extension in PHP runtime");
         }
 
         //$this->addBeanComponent($ctx, $ctxData, SomeClass::class);

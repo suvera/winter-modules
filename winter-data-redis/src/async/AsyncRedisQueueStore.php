@@ -63,7 +63,11 @@ class AsyncRedisQueueStore implements AsyncQueueStore {
         if ($limit > $size) {
             $limit = $size;
         }
-        $values = $this->redis->lRange_xwait($this->queueName, 0, $limit);
+        if ($limit <= 0) {
+            return [];
+        }
+        // LRANGE's end index is inclusive
+        $values = $this->redis->lRange_xwait($this->queueName, 0, $limit - 1);
         $records = [];
         foreach ($values as $value) {
             $records[] = AsyncQueueRecord::fromArray(0, json_decode($value, true));

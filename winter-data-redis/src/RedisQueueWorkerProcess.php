@@ -55,7 +55,7 @@ class RedisQueueWorkerProcess extends ServerWorkerProcess {
         $queueName = $this->consumer->getName();
         $consumerName = $this->consumer->getGroup() . '-' . $this->workerId;
 
-        $this->consumer->ensureConsumerGroup();
+        $this->awaitConsumerGroup();
 
         self::logInfo("Redis queue consumer starting. '" . $queueName
             . "' redis-queue-worker-" . $this->workerId . ',  pid: ' . $this->process->pid
@@ -93,6 +93,26 @@ class RedisQueueWorkerProcess extends ServerWorkerProcess {
 
             if ($pollIntervalMs > 0) {
                 usleep($pollIntervalMs * 1000);
+            }
+        }
+    }
+
+    /**
+     * Create the consumer group, retrying while Redis is unreachable. A
+     * worker process that throws or returns shuts the whole server down
+     * (winter-boot 2.1), so a Redis outage at startup must not escape.
+     */
+    protected function awaitConsumerGroup(): void {
+        $waitMs = 0;
+        while (true) {
+            try {
+                $this->consumer->ensureConsumerGroup();
+                return;
+            } catch (Throwable $e) {
+                $waitMs = min($waitMs + 1000, 30000);
+                self::logException($e, 'Could not create consumer group ' . $this->consumer->getGroup()
+                    . ' on stream ' . $this->consumer->getStream() . ', retrying in ' . $waitMs . 'ms: ');
+                usleep($waitMs * 1000);
             }
         }
     }

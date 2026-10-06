@@ -10,13 +10,19 @@ use Aws\Signature\SignatureV4;
 use GuzzleHttp\Psr7\Request as Psr7Request;
 use GuzzleHttp\Ring\Core;
 use OpenSearch\ClientBuilder;
+use Throwable;
 
 class OpenSearchUtil {
 
     private static array $clients = [];
 
     public static function buildClient(array $config): \OpenSearch\Client {
-        $key = md5(serialize($config));
+        try {
+            $key = md5(serialize($config));
+        } catch (Throwable) {
+            // Unserializable config (closures): build uncached.
+            $key = 'uncached-' . bin2hex(random_bytes(8));
+        }
 
         if (isset(self::$clients[$key])) {
             return self::$clients[$key];
@@ -48,8 +54,16 @@ class OpenSearchUtil {
             $clientBuilder->setBasicAuthentication($config['username'], $config['password']);
         }
 
-        if (isset($config['connection_params']) && is_array($config['connection_params'])) {
-            $clientBuilder->setConnectionParams($config['connection_params']);
+        $connectionParams = is_array($config['connection_params'] ?? null) ? $config['connection_params'] : [];
+        // Top-level shortcuts for per-request client options (honoured by
+        // both the cURL handler and SwooleHttpHandler).
+        foreach (['timeout', 'connect_timeout', 'proxy'] as $opt) {
+            if (isset($config[$opt]) && !isset($connectionParams['client'][$opt])) {
+                $connectionParams['client'][$opt] = $config[$opt];
+            }
+        }
+        if ($connectionParams) {
+            $clientBuilder->setConnectionParams($connectionParams);
         }
 
         if (isset($config['retries'])) {

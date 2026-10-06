@@ -48,6 +48,22 @@ When **memcached** php extension installed.
 
 When **memcache** php extension installed.
 
+Both templates keep one connection per Swoole coroutine (reused across
+coroutines through an idle list) and never share a connection opened before
+Swoole forks its workers. Optional pool keys per entry: `maxConnections`
+(default 50), `maxIdle` (8), `maxWaitMs` (5000); `idleTimeout` closes idle
+connections. Calls are not retried automatically.
+
+### MemcacheCache
+
+`MemcacheCache` (a winter-boot `Cache` over `MemcachedTemplate`) stores
+values with `serialize()` and reads them back through
+`SerializationUtil::unserialize()`, so
+`winter.security.unserialize.allowedClasses` applies. `clear()` bumps a
+per-cache namespace version instead of deleting keys, so it never touches
+other caches or applications on the same memcached; old entries expire or
+get evicted. Keys longer than 250 bytes or containing whitespace are hashed.
+
 
 #### Configuration (memcache-config.yml)
 

@@ -8,8 +8,6 @@ namespace dev\winterframework\data\redis\phpredis;
 
 use dev\winterframework\util\log\Wlf4p;
 use RedisCluster;
-use RedisException;
-use Throwable;
 
 /**
  * @method mixed acl(string $key_or_address, mixed $subcmd, array $args)
@@ -197,71 +195,22 @@ class PhpRedisClusterTemplate implements PhpRedisAbstractTemplate {
     use Wlf4p;
     use PhpRedisTrait;
 
-    protected ?RedisCluster $redis;
-
     public function __construct(private array $config) {
-        $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
-        $this->lastAccessTime = time();
-        $this->lastIdleCheck = time();
-        $this->reConnect();
+        $this->pool = RedisConnectionPool::fromConfig(
+            fn(string $persistentId): RedisCluster => $this->connect(),
+            'cluster-' . ($this->config['name'] ?? ($this->config['clusterName'] ?? '')),
+            $this->config
+        );
+        $this->pool->get();
     }
 
-    /**
-     * @throws
-     */
-    public function __call(string $name, array $arguments): mixed {
-        $this->lastAccessTime = time();
-        $this->dropForkedConnection();
-
-        if (is_null($this->redis)) {
-            $this->reConnect();
-        }
-
-        try {
-            return $this->redis->$name(...$arguments);
-        } catch (Throwable $e) {
-            self::logEx($e);
-
-            if (substr($name, -6) == '_xwait') {
-                $funcName = substr($name, 0, -6);
-                $waitMs = 0;
-                while (1) {
-                    $this->lastAccessTime = time();
-                    if ($waitMs < 10000000) {
-                        $waitMs += 200000;
-                    }
-
-                    try {
-                        if (is_null($this->redis)) {
-                            $this->reConnect();
-                        }
-                        return $this->redis->$funcName(...$arguments);
-                    } catch (RedisException $e) {
-                        self::logEx($e);
-                        usleep($waitMs);
-                    } catch (Throwable $e) {
-                        self::logEx($e);
-                        if (!is_null($this->redis)) {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            $this->reConnect();
-            return $this->redis->$name(...$arguments);
-        }
-    }
-
-    protected function reConnect(): void {
-        $this->lastAccessTime = time();
-
-        $this->redis = new RedisCluster(
+    protected function connect(): RedisCluster {
+        return new RedisCluster(
             null,
             $this->config['hosts'],
-            $this->config['timeout'] ?? 0,
-            $this->config['readTimeout'] ?? 0,
-            $this->config['persistent'] ?? false,
+            floatval($this->config['timeout'] ?? 0),
+            floatval($this->config['readTimeout'] ?? 0),
+            boolval($this->config['persistent'] ?? false),
             $this->config['auth'] ?? null
         );
     }

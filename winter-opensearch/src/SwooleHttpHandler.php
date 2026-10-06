@@ -7,6 +7,8 @@ use GuzzleHttp\Ring\Core;
 use GuzzleHttp\Ring\Exception\ConnectException;
 use GuzzleHttp\Ring\Exception\RingException;
 use GuzzleHttp\Ring\Future\CompletedFutureArray;
+use OpenSearch\ClientBuilder;
+use Swoole\Coroutine;
 use Throwable;
 
 /**
@@ -25,9 +27,28 @@ use Throwable;
  * (10318) is not supported by swoole_curl_setopt(). This handler replaces
  * cURL with Swoole\Coroutine\Http\Client so requests stay non-blocking
  * inside Swoole coroutines.
+ *
+ * Outside a coroutine (module boot, CLI migrations, tests) the stock cURL
+ * handler is used: the coroutine client cannot run there.
+ *
+ * Honoured client options: timeout / connect_timeout (0 = no limit, as with
+ * cURL), verify (ClientBuilder::setSSLVerification: bool or CA bundle path,
+ * peer verification ON by default; CURLOPT_CAINFO also accepted) and proxy.
  */
 class SwooleHttpHandler {
+    /** @var callable|null */
+    private $fallback = null;
+
+    public static function inCoroutine(): bool {
+        return extension_loaded('swoole') && Coroutine::getCid() > 0;
+    }
+
     public function __invoke(array $request) {
+        if (!self::inCoroutine()) {
+            $this->fallback ??= ClientBuilder::defaultHandler();
+            return ($this->fallback)($request);
+        }
+
         $start = microtime(true);
         $client = null;
         try {
@@ -59,12 +80,7 @@ class SwooleHttpHandler {
 
             $client = new \Swoole\Coroutine\Http\Client($host, (int) $port, $ssl);
 
-            $timeout = floatval($request['client']['timeout'] ?? 10.0);
-            $connectTimeout = floatval($request['client']['connect_timeout'] ?? 5.0);
-            $client->set([
-                'timeout' => $timeout > 0 ? $timeout : 10.0,
-                'connect_timeout' => $connectTimeout > 0 ? $connectTimeout : 5.0,
-            ]);
+            $client->set(self::clientSettings($host, $ssl, $request['client'] ?? []));
 
             $headers = [];
             foreach (($request['headers'] ?? []) as $name => $values) {
@@ -164,5 +180,84 @@ class SwooleHttpHandler {
                 $client->close();
             }
         }
+    }
+
+    /**
+     * Swoole client settings for the RingPHP "client" options.
+     */
+    public static function clientSettings(string $host, bool $ssl, array $clientOpts): array {
+        // cURL semantics: 0 / absent means no limit -> Swoole -1.
+        $timeout = floatval($clientOpts['timeout'] ?? 0);
+        $connectTimeout = floatval($clientOpts['connect_timeout'] ?? 0);
+        $settings = [
+            'timeout' => $timeout > 0 ? $timeout : -1,
+            'connect_timeout' => $connectTimeout > 0 ? $connectTimeout : -1,
+        ];
+
+        if ($ssl) {
+            $curl = is_array($clientOpts['curl'] ?? null) ? $clientOpts['curl'] : [];
+            $verify = $clientOpts['verify'] ?? null;
+            if ($verify === null) {
+                $caKey = defined('CURLOPT_CAINFO') ? CURLOPT_CAINFO : 10065;
+                $peerKey = defined('CURLOPT_SSL_VERIFYPEER') ? CURLOPT_SSL_VERIFYPEER : 64;
+                $verify = isset($curl[$peerKey]) && !$curl[$peerKey] ? false : ($curl[$caKey] ?? true);
+            }
+            $settings += self::sslSettings($host, $verify);
+        }
+
+        $proxy = $clientOpts['proxy'] ?? null;
+        if (is_string($proxy) && $proxy !== '') {
+            $settings += self::proxySettings($proxy);
+        }
+
+        return $settings;
+    }
+
+    private static function sslSettings(string $host, mixed $verify): array {
+        if ($verify === false || $verify === 0 || $verify === '0') {
+            return ['ssl_verify_peer' => false];
+        }
+
+        $settings = [
+            'ssl_verify_peer' => true,
+            'ssl_allow_self_signed' => false,
+            'ssl_host_name' => $host,
+        ];
+
+        $caFile = is_string($verify) && $verify !== '' && $verify !== '1' ? $verify : self::defaultCaFile();
+        if ($caFile !== null) {
+            $settings['ssl_cafile'] = $caFile;
+        }
+
+        return $settings;
+    }
+
+    private static function defaultCaFile(): ?string {
+        $locations = function_exists('openssl_get_cert_locations') ? openssl_get_cert_locations() : [];
+        foreach ([getenv('SSL_CERT_FILE') ?: null, $locations['default_cert_file'] ?? null,
+                     '/etc/ssl/certs/ca-certificates.crt', '/etc/pki/tls/certs/ca-bundle.crt'] as $file) {
+            if (is_string($file) && is_file($file)) {
+                return $file;
+            }
+        }
+        return null;
+    }
+
+    private static function proxySettings(string $proxy): array {
+        $parts = parse_url(str_contains($proxy, '://') ? $proxy : 'http://' . $proxy);
+        if (!is_array($parts) || empty($parts['host'])) {
+            return [];
+        }
+
+        $settings = [
+            'http_proxy_host' => $parts['host'],
+            'http_proxy_port' => intval($parts['port'] ?? 80),
+        ];
+        if (isset($parts['user'])) {
+            $settings['http_proxy_user'] = rawurldecode($parts['user']);
+            $settings['http_proxy_password'] = rawurldecode($parts['pass'] ?? '');
+        }
+
+        return $settings;
     }
 }

@@ -22,6 +22,7 @@ use dev\winterframework\util\log\Wlf4p;
 use Ramsey\Uuid\Uuid;
 use Swoole\Server;
 use Throwable;
+use dev\winterframework\util\SerializationUtil;
 
 class TaskServer {
     use Wlf4p;
@@ -72,7 +73,16 @@ class TaskServer {
         $tasks = $this->config['tasks'] ?? [];
 
         $totalWorkers = 0;
-        $curWorkerId = $this->wServer->getServerArg('worker_num') ?? 0;
+        // Task worker ids start right after the HTTP workers. Swoole defaults
+        // worker_num to the CPU count, but winter-boot sets no default, so
+        // pin it here: otherwise ids are mapped from 0 and no task worker
+        // finds its task at WorkerStart.
+        $workerNum = $this->wServer->getServerArg('worker_num');
+        if ($workerNum === null || intval($workerNum) <= 0) {
+            $workerNum = function_exists('swoole_cpu_num') ? swoole_cpu_num() : 1;
+            $this->wServer->addServerArg('worker_num', $workerNum);
+        }
+        $curWorkerId = intval($workerNum);
         foreach ($tasks as $task) {
             if (strlen($task['name']) > 128) {
                 throw new DtceException('tasks.name must not exceed 128 characters, but ' . $task['name']);
@@ -134,7 +144,7 @@ class TaskServer {
             return null;
         }
 
-        return unserialize($is->read());
+        return SerializationUtil::unserialize($is->read());
     }
 
     protected function checkConfig(): void {

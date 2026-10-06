@@ -17,6 +17,7 @@ use dev\winterframework\util\ExceptionUtils;
 use dev\winterframework\util\log\Wlf4p;
 use RdKafka\KafkaConsumerTopic;
 use RuntimeException;
+use Swoole\Coroutine;
 use Throwable;
 
 class KafkaWorkerProcess extends ServerWorkerProcess {
@@ -42,15 +43,21 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
     }
 
     public function getProcessId(): string {
-        return 'kafka-consumer-' . $this->workerId;
+        // Unique per consumer: the server pid table is keyed by this id.
+        return 'kafka-consumer-' . $this->consumer->getName() . '-' . $this->workerId;
     }
 
     protected function run(): void {
         $topics = $this->consumer->getTopics();
 
         if (!$topics) {
-            self::logInfo('No topics found for consumer ' . $this->consumer->getName());
-            return;
+            // Returning from run() shuts the whole server down (winter-boot
+            // 2.1); KafkaServiceImpl does not start such consumers, so this
+            // only guards direct use.
+            self::logWarning('No topics found for consumer ' . $this->consumer->getName() . ', worker idle');
+            while (true) {
+                Coroutine::sleep(3600);
+            }
         }
 
         //$this->validate();
@@ -70,8 +77,8 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
             $this->consumer
         );
 
+        $firstTime = true;
         while (true) {
-            $firstTime = true;
             $message = $this->consumer->getRawConsumer()->consume(120 * 1000);
 
             switch ($message->err) {
@@ -101,6 +108,7 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
                         . ', Topics: ' . json_encode($this->consumer->getTopics());
                     self::logError($err);
                     if ($firstTime) {
+                        // Misconfigured topic at startup: fail fast.
                         $this->wServer->shutdown($err);
                     }
                     break;
@@ -110,8 +118,9 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
                     break;
             }
 
-            /** @noinspection PhpUnusedLocalVariableInspection */
-            $firstTime = false;
+            if ($message->err !== RD_KAFKA_RESP_ERR__TIMED_OUT) {
+                $firstTime = false;
+            }
             //\Co\System::sleep(0.2); //200000);
         }
     }
@@ -153,7 +162,11 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
         }
     }
 
-    protected function consumerRecords(ConsumerRecords $records, Consumer $worker): void {
+    /**
+     * Hand the records to the worker, retrying transient failures.
+     * Returns true when the worker consumed them.
+     */
+    protected function consumerRecords(ConsumerRecords $records, Consumer $worker): bool {
         $trials = $this->consumer->getRetries();
         $reTriableExceptions = $this->consumer->getTransientExceptions();
         $retryWaitMs = $this->consumer->getRetryWaitMs();
@@ -162,14 +175,18 @@ class KafkaWorkerProcess extends ServerWorkerProcess {
             $trials--;
             try {
                 $worker->consume($records);
+                return true;
             } catch (Throwable $e) {
                 self::logException($e);
-                if (ExceptionUtils::inExceptions($e, $reTriableExceptions)) {
+                if ($trials > 0 && ExceptionUtils::inExceptions($e, $reTriableExceptions)) {
                     usleep($trials * $retryWaitMs * 1000);
                     continue;
                 }
+                return false;
             }
         }
+
+        return false;
     }
 
 }

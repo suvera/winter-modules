@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace dev\winterframework\data\memcache;
 
@@ -51,7 +52,8 @@ class MemcacheModule implements WinterModule {
 
         $i = 0;
         foreach ($config['memcache'] as $dataConfig) {
-            TypeAssert::notEmpty('name', $dataConfig['name'], "Memcache configuration missing name attribute");
+            TypeAssert::array($dataConfig, "Invalid Memcache configuration entry");
+            TypeAssert::notEmpty('name', $dataConfig['name'] ?? '', "Memcache configuration missing name attribute");
 
             if ($ctx->hasBeanByName($dataConfig['name'])) {
                 throw new BeansException("Bean already exist with name '" . $dataConfig['name']
@@ -87,7 +89,8 @@ class MemcacheModule implements WinterModule {
 
         $i = 0;
         foreach ($config['memcached'] as $dataConfig) {
-            TypeAssert::notEmpty('name', $dataConfig['name'], "Memcached configuration missing name attribute");
+            TypeAssert::array($dataConfig, "Invalid Memcached configuration entry");
+            TypeAssert::notEmpty('name', $dataConfig['name'] ?? '', "Memcached configuration missing name attribute");
 
             if ($ctx->hasBeanByName($dataConfig['name'])) {
                 throw new BeansException("Bean already exist with name '" . $dataConfig['name']

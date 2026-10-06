@@ -16,6 +16,7 @@ use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\DateUtil;
 use Ramsey\Uuid\Uuid;
 use Throwable;
+use dev\winterframework\util\SerializationUtil;
 
 class TaskQueuePdbc extends TaskQueueAbstract implements Queue {
     protected PdbcTemplate $pdbc;
@@ -107,7 +108,7 @@ class TaskQueuePdbc extends TaskQueueAbstract implements Queue {
         $entity = $this->pdbcQueue->poll($timeoutMs);
 
         if ($entity) {
-            return unserialize($entity->getData());
+            return SerializationUtil::unserialize($entity->getData());
         }
         return null;
     }

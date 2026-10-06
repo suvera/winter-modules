@@ -10,6 +10,7 @@ use dev\winterframework\dtce\task\TaskStatus;
 use dev\winterframework\type\Queue;
 use dev\winterframework\util\log\Wlf4p;
 use Ramsey\Uuid\Uuid;
+use dev\winterframework\util\SerializationUtil;
 
 abstract class TaskQueueAbstract implements TaskQueueHandler {
     use Wlf4p;
@@ -47,13 +48,12 @@ abstract class TaskQueueAbstract implements TaskQueueHandler {
             $stream = $this->storage->getInputStream($taskId);
             if ($stream) {
                 $c = $stream->read();
-                $ret = unserialize($c);
-                if ($ret === false) {
-                    self::logError("Try($n) - " . 'Could not unserialize ' . $c . ' for taskId ' . $taskId);
-                    usleep(200);
-                } else {
+                $ret = SerializationUtil::unserialize(strval($c), true);
+                if ($ret instanceof TaskObject) {
                     return $ret;
                 }
+                self::logError("Try($n) - " . 'Could not unserialize a TaskObject for taskId ' . $taskId);
+                usleep(200);
             }
             $n--;
         }

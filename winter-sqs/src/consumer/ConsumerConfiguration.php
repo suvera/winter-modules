@@ -43,7 +43,7 @@ class ConsumerConfiguration {
         }
 
         foreach ($config as $key => $value) {
-            if (property_exists($this, $key) && $key != 'config') {
+            if (property_exists($this, $key) && !in_array($key, ['config', 'ctx', 'sqsConnection', 'defaults'], true)) {
                 $this->$key = $value;
             } else {
                 $this->config[$key] = $value;

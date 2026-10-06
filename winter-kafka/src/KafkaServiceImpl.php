@@ -66,8 +66,8 @@ class KafkaServiceImpl implements KafkaService {
         string|ProducerConfiguration $producerOrName,
         mixed $message,
         mixed $key,
-        callable $onSuccess = null,
-        callable $onFailed = null
+        ?callable $onSuccess = null,
+        ?callable $onFailed = null
     ): void {
         if (!($producerOrName instanceof ProducerConfiguration)) {
             if (!isset($this->producers[$producerOrName])) {
@@ -102,6 +102,13 @@ class KafkaServiceImpl implements KafkaService {
 
         foreach ($this->consumers as $consumer) {
             /** @var ConsumerConfiguration $consumer */
+
+            if (!$consumer->getTopics()) {
+                // A worker without topics would exit, and an exiting worker
+                // process shuts the whole server down.
+                self::logWarning('Kafka consumer ' . $consumer->getName() . ' has no topics, not started');
+                continue;
+            }
 
             for ($i = 0; $i < $consumer->getWorkerNum(); $i++) {
                 $this->startConsumer($consumer, $i);

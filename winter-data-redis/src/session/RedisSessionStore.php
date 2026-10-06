@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace dev\winterframework\data\redis\session;
 
 use dev\winterframework\data\redis\phpredis\PhpRedisAbstractTemplate;
+use dev\winterframework\data\redis\phpredis\PhpRedisClusterTemplate;
+use dev\winterframework\data\redis\phpredis\PhpRedisTemplate;
 use dev\winterframework\web\session\SessionIdentityStore;
 use SessionHandlerInterface;
 
@@ -26,6 +28,20 @@ use SessionHandlerInterface;
  * bean.
  */
 class RedisSessionStore implements SessionHandlerInterface, SessionIdentityStore {
+    /** KEYS[1] = session key, ARGV[1] = ttl secs, ARGV[2..] = field/value pairs */
+    private const WRITE_SCRIPT = <<<'LUA'
+for i = 2, #ARGV, 2 do
+    redis.call('HSET', KEYS[1], ARGV[i], ARGV[i + 1])
+end
+local ttl = tonumber(ARGV[1])
+if ttl > 0 then
+    redis.call('EXPIRE', KEYS[1], ttl)
+else
+    redis.call('PERSIST', KEYS[1])
+end
+return 1
+LUA;
+
     public function __construct(
         protected PhpRedisAbstractTemplate $client,
         protected string $keyPrefix = 'wbsess:',
@@ -61,8 +77,7 @@ class RedisSessionStore implements SessionHandlerInterface, SessionIdentityStore
     }
 
     public function write(string $id, string $data): bool {
-        $this->client->hSet($this->key($id), 'data', $data);
-        $this->applyTtl($id);
+        $this->store($id, ['data' => $data]);
         return true;
     }
 
@@ -72,17 +87,35 @@ class RedisSessionStore implements SessionHandlerInterface, SessionIdentityStore
         string $username,
         int $sessionType
     ): bool {
-        $key = $this->key($id);
+        $fields = ['data' => $data, 'type' => (string)$sessionType];
         if ($username !== '') {
-            $this->client->hSet($key, 'data', $data);
-            $this->client->hSet($key, 'username', $username);
-            $this->client->hSet($key, 'type', (string)$sessionType);
-        } else {
-            $this->client->hSet($key, 'data', $data);
-            $this->client->hSet($key, 'type', (string)$sessionType);
+            $fields['username'] = $username;
         }
-        $this->applyTtl($id);
+        $this->store($id, $fields);
         return true;
+    }
+
+    /**
+     * Write the fields and the TTL together. Single-node and cluster
+     * templates run one Lua script (atomic: a session hash can never be left
+     * without its TTL). Array/token templates route by the first argument,
+     * which for EVAL is the script, so they fall back to HMSET + EXPIRE.
+     */
+    protected function store(string $id, array $fields): void {
+        $key = $this->key($id);
+
+        if ($this->client instanceof PhpRedisTemplate || $this->client instanceof PhpRedisClusterTemplate) {
+            $args = [$key, strval($this->ttlSecs)];
+            foreach ($fields as $field => $value) {
+                $args[] = $field;
+                $args[] = $value;
+            }
+            $this->client->eval(self::WRITE_SCRIPT, $args, 1);
+            return;
+        }
+
+        $this->client->hMset($key, $fields);
+        $this->applyTtl($id);
     }
 
     public function destroy(string $id): bool {

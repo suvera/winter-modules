@@ -117,7 +117,18 @@ name | Yes | Producer  Name
 topic | Yes | (string) Message will be produced to this Topic.
 log_level | No | Default Value: `6` (Integer). <br>Set log level value. EMERG = 0, ALERT = 1, CRIT = 2, ERR = 3, WARNING = 4, NOTICE = 5, INFO = 6, DEBUG = 7,
 logCallback | No | Default Value: `dev\winterframework\kafka\KafkaLogCallbackDefault` <br>Set log callback. You will get events according to log_level. Must be derived from KafkaLogCallback. <br>Set 0 to disable it.
+transactionEnabled | No | Default Value: `false`. <br>Send every message in its own Kafka transaction. `initTransactions()` runs once per producer.
+transactional.id | No | Default Value: `TRANSACTION-<name>`. <br>Used as a prefix: each Swoole worker gets `<prefix>-<hostname>-w<workerId>` (or `-p<pid>` outside a worker), because Kafka fences a producer as soon as another one initialises the same id.
 (Others) | - |  [Full List of Settings](https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md)
+
+Producers are built lazily in the process that uses them; a producer
+inherited through `fork()` is rebuilt in the child. A failed send throws
+`KafkaException` (with the librdkafka error as the previous exception), for
+transactional and plain producers alike.
+
+Consumers without topics are not started (a worker process that exits stops
+the whole server). A batch is passed to your worker once; only exceptions
+listed in `transientExceptions` are retried, up to `retries` attempts.
 
 ## How to write a consumer worker
 
