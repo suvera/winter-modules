@@ -162,7 +162,7 @@ class RedisQueueServiceImpl implements RedisQueueService {
         $redis = $this->resolveRedis($config, $consumerOrStream);
         $stream = $config?->getStream() ?? $consumerOrStream;
 
-        return intval($redis->xtrim($stream, $maxLen, true));
+        return intval($redis->xtrim($stream, strval($maxLen), true));
     }
 
     // ------------------------------------------------------------------------

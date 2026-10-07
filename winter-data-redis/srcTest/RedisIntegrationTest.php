@@ -186,6 +186,20 @@ T::test('queue: entries sent before the group exists are delivered', function ()
     T::eq('7', $fields['tenant']);
 });
 
+T::test('queue: trimStream passes threshold as string (phpredis 6)', function () use ($single) {
+    $ctx = T::stub(ApplicationContext::class);
+    $cfg = new ConsumerConfiguration(['name' => 'q2', 'workerClass' => 'X'], $ctx);
+    (new ReflectionProperty($cfg, 'redisTpl'))->setValue($cfg, $single);
+
+    $svc = new RedisQueueServiceImpl();
+    $svc->addConsumer($cfg);
+    for ($i = 0; $i < 5; $i++) {
+        $svc->send('q2', ['n' => $i]);
+    }
+    T::eq(5, $svc->queueLength('q2'));
+    T::true($svc->trimStream('q2', 0) >= 0);
+});
+
 T::test('queue: send failure throws instead of returning an empty id', function () use ($single) {
     $svc = new RedisQueueServiceImpl();
     $ctx = T::stub(ApplicationContext::class, [
