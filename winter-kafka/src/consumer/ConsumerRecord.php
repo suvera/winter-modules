@@ -19,7 +19,7 @@ class ConsumerRecord {
         $this->timestamp = time();
     }
 
-    public static function fromMessage(Message $message, string $groupName = null): self {
+    public static function fromMessage(Message $message, ?string $groupName = null): self {
         $obj = new self(
             $message->payload,
             $message->topic_name,

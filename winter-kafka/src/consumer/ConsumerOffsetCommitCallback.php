@@ -10,5 +10,5 @@ interface ConsumerOffsetCommitCallback {
 
     public function __construct(ConsumerConfiguration $config, ApplicationContext $ctx);
 
-    public function __invoke(KafkaConsumer $kafka, int $err = 0, array $partitions = null): void;
+    public function __invoke(KafkaConsumer $kafka, int $err = 0, ?array $partitions = null): void;
 }

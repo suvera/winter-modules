@@ -53,7 +53,7 @@ class KafkaModule implements WinterModule {
     protected function getDefaults(array $list): array {
         $defaults = [];
         foreach ($list as $data) {
-            if ($data['name'] == self::__DEFAULT) {
+            if (is_array($data) && ($data['name'] ?? '') === self::__DEFAULT) {
                 unset($data['name']);
                 $defaults = array_merge($defaults, $data);
             }
@@ -81,7 +81,7 @@ class KafkaModule implements WinterModule {
         }
 
         foreach ($config['consumers'] as $data) {
-            if ($data['name'] == self::__DEFAULT) {
+            if (($data['name'] ?? '') === self::__DEFAULT) {
                 continue;
             }
 
@@ -109,7 +109,7 @@ class KafkaModule implements WinterModule {
         }
 
         foreach ($config['producers'] as $data) {
-            if ($data['name'] == self::__DEFAULT) {
+            if (($data['name'] ?? '') === self::__DEFAULT) {
                 continue;
             }
 

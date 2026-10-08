@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace dev\winterframework\data\redis;
 
@@ -25,6 +26,8 @@ class RedisModule implements WinterModule {
     use ModuleTrait;
     use Wlf4p;
 
+    const __DEFAULT = '__default__';
+
     public function init(ApplicationContext $ctx, ApplicationContextData $ctxData): void {
         if (!extension_loaded('redis')) {
             throw new ModuleException("RedisModule requires *redis* extension in PHP runtime");
@@ -37,11 +40,26 @@ class RedisModule implements WinterModule {
         $moduleDef = $ctx->getModule(static::class);
         $config = $this->retrieveConfiguration($ctx, $ctxData, $moduleDef);
 
-        $this->buildRedisSingles($config, $ctx, $ctxData);
-        $this->buildRedisArrays($config, $ctx, $ctxData);
-        $this->buildRedisClusters($config, $ctx, $ctxData);
-        $this->buildRedisSentinel($config, $ctx, $ctxData);
-        $this->buildRedisTokenBased($config, $ctx, $ctxData);
+        $this->buildTemplates($config, 'singles', PhpRedisTemplate::class, $ctx, $ctxData,
+            fn(array $c) => new PhpRedisTemplate($c),
+            fn(PhpRedisTemplate $t) => $t->ping()
+        );
+        $this->buildTemplates($config, 'arrays', PhpRedisArrayTemplate::class, $ctx, $ctxData,
+            fn(array $c) => new PhpRedisArrayTemplate($c),
+            fn(PhpRedisArrayTemplate $t) => $t->ping()
+        );
+        $this->buildTemplates($config, 'clusters', PhpRedisClusterTemplate::class, $ctx, $ctxData,
+            fn(array $c) => new PhpRedisClusterTemplate($c),
+            fn(PhpRedisClusterTemplate $t) => $t->echo('Hello, CLuster')
+        );
+        $this->buildTemplates($config, 'sentinels', PhpRedisSentinelTemplate::class, $ctx, $ctxData,
+            fn(array $c) => new PhpRedisSentinelTemplate($c),
+            fn(PhpRedisSentinelTemplate $t) => $t->ping()
+        );
+        $this->buildTemplates($config, 'tokens', PhpRedisTokenTemplate::class, $ctx, $ctxData,
+            fn(array $c) => new PhpRedisTokenTemplate($c),
+            fn(PhpRedisTokenTemplate $t) => $t->ping()
+        );
         $this->buildQueueConsumers($config, $ctx);
         $this->startRedisQueue($ctx);
     }
@@ -56,7 +74,7 @@ class RedisModule implements WinterModule {
     protected function getDefaults(array $list): array {
         $defaults = [];
         foreach ($list as $data) {
-            if (($data['name'] ?? '') == '__default__') {
+            if (is_array($data) && ($data['name'] ?? '') === self::__DEFAULT) {
                 unset($data['name']);
                 $defaults = array_merge($defaults, $data);
             }
@@ -77,7 +95,8 @@ class RedisModule implements WinterModule {
         $consumerDefaults = $this->getDefaults($consumers);
 
         foreach ($consumers as $data) {
-            if (($data['name'] ?? '') == '__default__') {
+            TypeAssert::array($data, " Invalid 'redis.consumers' entry");
+            if (($data['name'] ?? '') === self::__DEFAULT) {
                 continue;
             }
 
@@ -86,13 +105,21 @@ class RedisModule implements WinterModule {
         }
     }
 
-    protected function buildRedisSingles(
+    /**
+     * Register one bean per "phpredis.<type>" entry; the first entry also
+     * becomes the by-class default.
+     */
+    protected function buildTemplates(
         array $config,
+        string $type,
+        string $beanClass,
         ApplicationContext $ctx,
-        ApplicationContextData $ctxData
+        ApplicationContextData $ctxData,
+        callable $create,
+        callable $probe
     ): void {
-
-        if (!isset($config['phpredis.singles']) || !is_array($config['phpredis.singles'])) {
+        $key = 'phpredis.' . $type;
+        if (!isset($config[$key]) || !is_array($config[$key])) {
             return;
         }
 
@@ -102,173 +129,23 @@ class RedisModule implements WinterModule {
         $idleCheck = $ctx->beanByClass(IdleCheckRegistry::class);
 
         $i = 0;
-        foreach ($config['phpredis.singles'] as $dataConfig) {
-            TypeAssert::notEmpty('name', $dataConfig['name'], "Redis 'singles' missing name attribute");
+        foreach ($config[$key] as $dataConfig) {
+            TypeAssert::array($dataConfig, " Invalid Redis '$type' entry");
+            $name = $dataConfig['name'] ?? '';
+            TypeAssert::notEmpty('name', $name, "Redis '$type' missing name attribute");
 
-            if ($ctx->hasBeanByName($dataConfig['name'])) {
-                throw new BeansException("Bean already exist with name '" . $dataConfig['name']
-                    . "' Redis 'singles' name conflicts with other bean");
+            if ($ctx->hasBeanByName($name)) {
+                throw new BeansException("Bean already exist with name '" . $name
+                    . "' Redis '$type' name conflicts with other bean");
             }
 
-            $tpl = new PhpRedisTemplate($dataConfig);
-            $tpl->ping();
+            $tpl = $create($dataConfig);
+            $probe($tpl);
             $beanProvider->registerInternalBean(
                 $tpl,
-                PhpRedisTemplate::class,
+                $beanClass,
                 ($i == 0),
-                $dataConfig['name'],
-                true
-            );
-            $idleCheck->register([$tpl, 'checkIdleConnection']);
-
-            $i++;
-        }
-
-    }
-
-    protected function buildRedisArrays(
-        array $config,
-        ApplicationContext $ctx,
-        ApplicationContextData $ctxData
-    ): void {
-        if (!isset($config['phpredis.arrays']) || !is_array($config['phpredis.arrays'])) {
-            return;
-        }
-
-        /** @var WinterBeanProviderContext $beanProvider */
-        $beanProvider = $ctxData->getBeanProvider();
-        /** @var IdleCheckRegistry $idleCheck */
-        $idleCheck = $ctx->beanByClass(IdleCheckRegistry::class);
-
-        $i = 0;
-        foreach ($config['phpredis.arrays'] as $dataConfig) {
-            TypeAssert::notEmpty('name', $dataConfig['name'], "Redis 'arrays' missing name attribute");
-
-            if ($ctx->hasBeanByName($dataConfig['name'])) {
-                throw new BeansException("Bean already exist with name '" . $dataConfig['name']
-                    . "' Redis 'arrays' name conflicts with other bean");
-            }
-
-            $tpl = new PhpRedisArrayTemplate($dataConfig);
-            $tpl->ping();
-            $beanProvider->registerInternalBean(
-                $tpl,
-                PhpRedisArrayTemplate::class,
-                ($i == 0),
-                $dataConfig['name'],
-                true
-            );
-            $idleCheck->register([$tpl, 'checkIdleConnection']);
-
-            $i++;
-        }
-    }
-
-    protected function buildRedisClusters(
-        array $config,
-        ApplicationContext $ctx,
-        ApplicationContextData $ctxData
-    ): void {
-        if (!isset($config['phpredis.clusters']) || !is_array($config['phpredis.clusters'])) {
-            return;
-        }
-
-        /** @var WinterBeanProviderContext $beanProvider */
-        $beanProvider = $ctxData->getBeanProvider();
-        /** @var IdleCheckRegistry $idleCheck */
-        $idleCheck = $ctx->beanByClass(IdleCheckRegistry::class);
-
-        $i = 0;
-        foreach ($config['phpredis.clusters'] as $dataConfig) {
-            TypeAssert::notEmpty('name', $dataConfig['name'], "Redis 'clusters' missing name attribute");
-
-            if ($ctx->hasBeanByName($dataConfig['name'])) {
-                throw new BeansException("Bean already exist with name '" . $dataConfig['name']
-                    . "' Redis 'clusters' name conflicts with other bean");
-            }
-
-            $tpl = new PhpRedisClusterTemplate($dataConfig);
-            $tpl->echo('Hello, CLuster');
-            $beanProvider->registerInternalBean(
-                $tpl,
-                PhpRedisClusterTemplate::class,
-                ($i == 0),
-                $dataConfig['name'],
-                true
-            );
-            $idleCheck->register([$tpl, 'checkIdleConnection']);
-
-            $i++;
-        }
-    }
-
-    protected function buildRedisSentinel(
-        array $config,
-        ApplicationContext $ctx,
-        ApplicationContextData $ctxData
-    ): void {
-
-        if (!isset($config['phpredis.sentinels']) || !is_array($config['phpredis.sentinels'])) {
-            return;
-        }
-
-        /** @var WinterBeanProviderContext $beanProvider */
-        $beanProvider = $ctxData->getBeanProvider();
-
-        $i = 0;
-        foreach ($config['phpredis.sentinels'] as $dataConfig) {
-            TypeAssert::notEmpty('name', $dataConfig['name'], "Redis 'sentinels' missing name attribute");
-
-            if ($ctx->hasBeanByName($dataConfig['name'])) {
-                throw new BeansException("Bean already exist with name '" . $dataConfig['name']
-                    . "' Redis 'sentinels' name conflicts with other bean");
-            }
-
-            $tpl = new PhpRedisSentinelTemplate($dataConfig);
-            $tpl->ping();
-            $beanProvider->registerInternalBean(
-                $tpl,
-                PhpRedisSentinelTemplate::class,
-                ($i == 0),
-                $dataConfig['name'],
-                true
-            );
-
-            $i++;
-        }
-    }
-
-    protected function buildRedisTokenBased(
-        array $config,
-        ApplicationContext $ctx,
-        ApplicationContextData $ctxData
-    ): void {
-
-        if (!isset($config['phpredis.tokens']) || !is_array($config['phpredis.tokens'])) {
-            return;
-        }
-
-        /** @var WinterBeanProviderContext $beanProvider */
-        $beanProvider = $ctxData->getBeanProvider();
-        /** @var IdleCheckRegistry $idleCheck */
-        $idleCheck = $ctx->beanByClass(IdleCheckRegistry::class);
-
-        $i = 0;
-        foreach ($config['phpredis.tokens'] as $dataConfig) {
-            TypeAssert::notEmpty('name', $dataConfig['name'], "Redis 'tokens' missing name attribute");
-
-            if ($ctx->hasBeanByName($dataConfig['name'])) {
-                throw new BeansException("Bean already exist with name '" . $dataConfig['name']
-                    . "' Redis 'tokens' name conflicts with other bean");
-            }
-
-            $tpl = new PhpRedisTokenTemplate($dataConfig);
-            $tpl->ping();
-            $beanProvider->registerInternalBean(
-                $tpl,
-                PhpRedisTokenTemplate::class,
-                ($i == 0),
-                $dataConfig['name'],
+                $name,
                 true
             );
             $idleCheck->register([$tpl, 'checkIdleConnection']);

@@ -1,11 +1,11 @@
 <?php
+declare(strict_types=1);
 
 namespace dev\winterframework\data\redis\phpredis;
 
 use dev\winterframework\util\log\Wlf4p;
+use InvalidArgumentException;
 use Redis;
-use RedisException;
-use Throwable;
 
 /**
  * @method mixed acl(mixed $subcmd, array $args)
@@ -243,94 +243,43 @@ class PhpRedisTemplate implements PhpRedisAbstractTemplate {
     use Wlf4p;
     use PhpRedisTrait;
 
-    protected ?Redis $redis = null;
-
     public function __construct(private array $config, private bool $lazy = false) {
-        $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
-        if (!$this->lazy) {
-            $this->reconnect();
-        }
-    }
-
-    private function reconnect(): void {
-        $this->lastAccessTime = time();
-        $this->lastIdleCheck = time();
-
-        $this->redis = new Redis();
-        $connect = isset($this->config['persistence']) && $this->config['persistence'] ? 'pconnect' : 'connect';
-
-        $port = 6379;
-        if (isset($this->config['port'])) {
-            $port = intval($this->config['port']);
-            if ($port < 1 || $port > 65535) {
-                throw new \InvalidArgumentException("Invalid Redis port: $port");
-            }
-        }
-
-        $this->config['timeout'] = floatval($this->config['timeout'] ?? 0);
-        $this->config['retryInterval'] = floatval($this->config['retryInterval'] ?? null);
-        $this->config['readTimeout'] = floatval($this->config['readTimeout'] ?? 0);
-
-        $this->redis->$connect(
-            $this->config['host'],
-            $this->config['port'] ?? 6379,
-            $this->config['timeout'] ?? 0,
-            $this->config['reserved'] ?? null,
-            $this->config['retryInterval'] ?? null,
-            $this->config['readTimeout'] ?? 0
+        $this->pool = RedisConnectionPool::fromConfig(
+            fn(string $persistentId): Redis => $this->connect($persistentId),
+            'single-' . ($this->config['name'] ?? ($this->config['host'] ?? '')),
+            $this->config
         );
-        if (isset($this->config['auth'])) {
-            $this->redis->auth($this->config['auth']);
+
+        if (!$this->lazy) {
+            $this->pool->get();
         }
     }
 
-    /**
-     * @throws
-     */
-    public function __call(string $name, array $arguments): mixed {
-        $this->lastAccessTime = time();
-        $this->dropForkedConnection();
-
-        if (substr($name, -6) == '_xwait') {
-            $funcName = substr($name, 0, -6);
-            $waitMs = 0;
-            while (1) {
-                $this->lastAccessTime = time();
-                if ($waitMs < 10000000) {
-                    $waitMs += 200000;
-                }
-
-                try {
-                    if (is_null($this->redis) || !$this->redis->isConnected()) {
-                        $this->reConnect();
-                    }
-
-                    return $this->redis->$funcName(...$arguments);
-                } catch (RedisException $e) {
-                    self::logEx($e);
-                    usleep($waitMs);
-                    $this->reConnect();
-                } catch (Throwable $e) {
-                    self::logEx($e);
-                    throw $e;
-                }
-            }
+    protected function connect(string $persistentId): Redis {
+        $port = intval($this->config['port'] ?? 6379);
+        if ($port < 1 || $port > 65535) {
+            throw new InvalidArgumentException("Invalid Redis port: $port");
         }
 
-        $redis = $this->redis;
-        if (is_null($redis) || !$redis->isConnected()) {
-            $this->reConnect();
-            $redis = $this->redis;
+        $host = strval($this->config['host'] ?? '');
+        $timeout = floatval($this->config['timeout'] ?? 0);
+        $retryInterval = intval($this->config['retryInterval'] ?? 0);
+        $readTimeout = floatval($this->config['readTimeout'] ?? 0);
+
+        $redis = new Redis();
+        if (!empty($this->config['persistence'])) {
+            // Unique per process + pooled connection: pconnect with a shared
+            // id would hand every coroutine (and forked child) one socket.
+            $id = isset($this->config['reserved']) ? $this->config['reserved'] . '-' . $persistentId : $persistentId;
+            $redis->pconnect($host, $port, $timeout, $id, $retryInterval, $readTimeout);
         } else {
-            try {
-                return $redis->$name(...$arguments);
-            } catch (RedisException $e) {
-                self::logDebug($e->getMessage());
-                $this->reconnect();
-                $redis = $this->redis;
-            }
+            $redis->connect($host, $port, $timeout, null, $retryInterval, $readTimeout);
         }
 
-        return $redis->$name(...$arguments);
+        if (isset($this->config['auth'])) {
+            $redis->auth($this->config['auth']);
+        }
+
+        return $redis;
     }
 }

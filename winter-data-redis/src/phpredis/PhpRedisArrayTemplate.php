@@ -6,8 +6,6 @@ namespace dev\winterframework\data\redis\phpredis;
 
 use dev\winterframework\util\log\Wlf4p;
 use RedisArray;
-use RedisException;
-use Throwable;
 
 /**
  * @method mixed bgsave()
@@ -246,62 +244,21 @@ class PhpRedisArrayTemplate implements PhpRedisAbstractTemplate {
     use PhpRedisTrait;
     use Wlf4p;
 
-    protected ?RedisArray $redis;
-
     public function __construct(private array $config) {
-        $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
-        $this->lastAccessTime = time();
-        $this->lastIdleCheck = time();
-    }
-
-    protected function reConnect(): void {
-        $this->redis = new RedisArray(
-            $this->config['hosts'],
-            $this->config['options'] ? $this->config['options'][0] : []
+        $this->pool = RedisConnectionPool::fromConfig(
+            fn(string $persistentId): RedisArray => $this->connect(),
+            'array-' . ($this->config['name'] ?? ''),
+            $this->config
         );
     }
 
-    /**
-     * @throws
-     */
-    public function __call(string $name, array $arguments): mixed {
-        $this->lastAccessTime = time();
-        $this->dropForkedConnection();
-
-        if (substr($name, -6) == '_xwait') {
-            $funcName = substr($name, 0, -6);
-            $waitMs = 0;
-            while (1) {
-                $this->lastAccessTime = time();
-                if ($waitMs < 10000000) {
-                    $waitMs += 200000;
-                }
-
-                try {
-                    if (is_null($this->redis)) {
-                        $this->reConnect();
-                    }
-
-                    return $this->redis->$funcName(...$arguments);
-                } catch (RedisException $e) {
-                    self::logEx($e);
-                    usleep($waitMs);
-                    $this->redis = null;
-                } catch (Throwable $e) {
-                    self::logEx($e);
-                    if (!is_null($this->redis)) {
-                        throw $e;
-                    }
-                }
-            }
+    protected function connect(): RedisArray {
+        // YAML lists of maps arrive as [0 => [...]]; accept both shapes.
+        $options = $this->config['options'] ?? [];
+        if (is_array($options) && isset($options[0]) && is_array($options[0])) {
+            $options = $options[0];
         }
 
-        $redis = $this->redis;
-        if (is_null($redis)) {
-            $this->reConnect();
-            $redis = $this->redis;
-        }
-
-        return $redis->$name(...$arguments);
+        return new RedisArray($this->config['hosts'], is_array($options) ? $options : []);
     }
 }

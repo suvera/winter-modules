@@ -25,7 +25,7 @@ class OpenSearchModule implements WinterModule {
         $moduleDef = $ctx->getModule(static::class);
         $config = $this->retrieveConfiguration($ctx, $ctxData, $moduleDef);
 
-        if (!is_array($config['opensearch'])) {
+        if (!isset($config['opensearch']) || !is_array($config['opensearch'])) {
             return;
         }
         

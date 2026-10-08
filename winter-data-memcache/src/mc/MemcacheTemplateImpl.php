@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace dev\winterframework\data\memcache\mc;
 
-use Co;
 use dev\winterframework\core\System;
+use dev\winterframework\data\memcache\util\BootUpDelay;
+use dev\winterframework\data\memcache\util\MemcacheConnectionPool;
 use dev\winterframework\type\Arrays;
 use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\log\Wlf4p;
@@ -15,88 +16,72 @@ use Throwable;
 class MemcacheTemplateImpl implements MemcacheTemplate {
     use Wlf4p;
 
-    protected int $lastAccessTime = 0;
-    protected int $lastIdleCheck = 0;
-    protected int $idleTimeout = 0;
-    protected ?Memcache $memcache = null;
+    protected MemcacheConnectionPool $pool;
     protected int $startTime;
-    protected mixed $bootUpTimeMs;
+    protected int $bootUpTimeMs;
 
     public function __construct(private array $config, private bool $lazy = false) {
         $this->startTime = System::currentTimeMillis();
-        $this->bootUpTimeMs = $this->config['bootUpTimeMs'] ?? 0;
+        $this->bootUpTimeMs = intval($this->config['bootUpTimeMs'] ?? 0);
 
-        $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
         Arrays::assertKey($this->config, 'servers', 'Invalid Memcache config');
         TypeAssert::array($this->config['servers'], 'servers config value must be array in Memcache config');
 
+        // ext-memcache talks through PHP streams, which Swoole hooks: each
+        // coroutine needs its own connection (see MemcacheConnectionPool).
+        $this->pool = MemcacheConnectionPool::fromConfig(
+            fn(string $persistentId): Memcache => $this->connect(),
+            'memcache-' . ($this->config['name'] ?? ''),
+            $this->config,
+            fn(Memcache $m) => $m->close()
+        );
+
         if (!$this->lazy) {
-            $this->reconnect();
+            $this->pool->get();
         }
     }
 
-    private function reconnect(): void {
-        if ($this->lazy && $this->bootUpTimeMs > 0 && (System::currentTimeMillis() - $this->startTime) < $this->bootUpTimeMs) {
-            Co::sleep((System::currentTimeMillis() - $this->startTime) / 1000);
+    protected function connect(): Memcache {
+        if ($this->lazy) {
+            BootUpDelay::await($this->startTime, $this->bootUpTimeMs);
         }
 
-        $this->lastAccessTime = time();
-        $this->lastIdleCheck = time();
-
-        $this->memcache = new Memcache();
-        $servers = $this->config['servers'];
-
-        foreach ($servers as $server) {
+        $memcache = new Memcache();
+        foreach ($this->config['servers'] as $server) {
             Arrays::assertKey($server, 'host', 'Invalid Memcache config');
             Arrays::assertKey($server, 'port', 'Invalid Memcache config');
 
-            $this->memcache->addServer(
+            $memcache->addServer(
                 $server['host'],
                 intval($server['port']),
                 false,
-                $server['weight'] ?? 0,
-                $this->config['timeout'] ?? 1,
-                $this->config['retry_interval'] ?? -1,
-                isset($this->config['status']) && $this->config['status']
+                intval($server['weight'] ?? 0),
+                intval($this->config['timeout'] ?? 1),
+                intval($this->config['retry_interval'] ?? -1),
+                !empty($this->config['status'])
             );
         }
+
+        return $memcache;
     }
 
     /**
+     * Runs once: Memcache reports network failures through return values,
+     * and re-sending a write (increment, append, ...) could apply it twice.
+     *
      * @throws
      */
     public function __call(string $name, array $arguments): mixed {
-        $this->lastAccessTime = time();
-
-        $memcache = $this->memcache;
-        if (is_null($memcache)) {
-            $this->reConnect();
-            $memcache = $this->memcache;
-        } else {
-            try {
-                return $memcache->$name(...$arguments);
-            } catch (Throwable $e) {
-                self::logDebug($e->getMessage());
-                $this->reconnect();
-                $memcache = $this->memcache;
-            }
+        $memcache = $this->pool->get();
+        try {
+            return $memcache->$name(...$arguments);
+        } catch (Throwable $e) {
+            $this->pool->invalidate($memcache);
+            throw $e;
         }
-
-        return $memcache->$name(...$arguments);
     }
 
     public function checkIdleConnection(): void {
-        if ($this->lastAccessTime == 0 || $this->idleTimeout == 0) {
-            return;
-        }
-
-        if ((time() - $this->lastAccessTime) < $this->idleTimeout) {
-            return;
-        }
-
-        $this->lastIdleCheck = time();
-        $this->lastAccessTime = time();
-        $this->memcache->close();
-        $this->memcache = null;
+        $this->pool->closeIdle();
     }
 }

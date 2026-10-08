@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace dev\winterframework\data\redis\phpredis;
 
@@ -8,7 +9,6 @@ use dev\winterframework\util\hash\MurmurHash3Provider;
 use dev\winterframework\util\log\Wlf4p;
 use Redis;
 use RedisException;
-use Throwable;
 
 /**
  * @method mixed acl(mixed $subcmd, array $args)
@@ -246,184 +246,156 @@ class PhpRedisTokenTemplate implements PhpRedisAbstractTemplate {
     use Wlf4p;
 
     /**
-     * @var Redis[][]
+     * @var RedisConnectionPool[] host name => pool
      */
-    protected array $redis = [];
+    protected array $pools = [];
     /**
-     * @var Redis[][]
+     * @var string[][] token => [hostName => hostName]
      */
     private array $tokens = [];
     private array $hosts = [];
     private bool $strictTokenRing = false;
     private HashProvider $hashProvider;
-    protected int $idleTimeout = 0;
-    private int $connectedPid = 0;
 
     public function __construct(private array $config) {
-        $this->redis = [];
-        $this->idleTimeout = $this->config['idleTimeout'] ?? 0;
         $this->init();
     }
 
-    private function reconnect(string $hostName): void {
-        $connect = isset($this->config['persistence']) && $this->config['persistence'] ? 'pconnect' : 'connect';
+    protected function connect(string $hostName, string $persistentId): Redis {
         $host = $this->hosts[$hostName];
 
         $redis = new Redis();
+        if (!empty($this->config['persistence'])) {
+            $id = isset($host['reserved']) ? $host['reserved'] . '-' . $persistentId : $persistentId;
+            $redis->pconnect($host['host'], $host['port'], $host['timeout'], $id,
+                $host['retryInterval'], $host['readTimeout']);
+        } else {
+            $redis->connect($host['host'], $host['port'], $host['timeout'], null,
+                $host['retryInterval'], $host['readTimeout']);
+        }
 
-        $redis->$connect(
-            $host['host'],
-            $host['port'],
-            $host['timeout'],
-            $host['reserved'],
-            $host['retryInterval'],
-            $host['readTimeout']
-        );
+        if (isset($this->config['auth'])) {
+            $redis->auth($this->config['auth']);
+        }
 
-        $this->redis[$host['host']] = [
-            'lastAccessTime' => time(),
-            'lastIdleCheck' => time(),
-            'conn' => $redis
-        ];
+        return $redis;
     }
 
     private function init(): void {
-        TypeAssert::array($this->config['hosts'], " 'hosts' config must be array");
-        $this->strictTokenRing = $this->config['strictTokenRing'] ?? false;
+        TypeAssert::array($this->config['hosts'] ?? null, " 'hosts' config must be array");
+        $this->strictTokenRing = boolval($this->config['strictTokenRing'] ?? false);
         $hp = $this->config['hashProvider'] ?? MurmurHash3Provider::class;
         $this->hashProvider = new $hp();
 
-        $this->config['timeout'] = $this->config['timeout'] ?? 0;
-        $this->config['reserved'] = $this->config['reserved'] ?? null;
-        $this->config['retryInterval'] = $this->config['retryInterval'] ?? null;
-        $this->config['readTimeout'] = $this->config['readTimeout'] ?? 0;
-
         foreach ($this->config['hosts'] as $host) {
             TypeAssert::array($host, " 'hosts' config must be array");
-            TypeAssert::integer($host['token'], " empty value 'hosts -> token' ");
-            TypeAssert::string($host['host'], " empty value 'hosts -> host' ");
+            TypeAssert::integer($host['token'] ?? null, " empty value 'hosts -> token' ");
+            TypeAssert::string($host['host'] ?? null, " empty value 'hosts -> host' ");
 
-            $this->hosts[$host['host']] = [
-                'host' => $host['host'],
-                'port' => $host['port'] ?? 6379,
-                'timeout' => $this->config['timeout'],
-                'reserved' => $this->config['reserved'],
-                'retryInterval' => $this->config['retryInterval'],
-                'readTimeout' => $this->config['readTimeout']
+            $hostName = $host['host'];
+            $this->hosts[$hostName] = [
+                'host' => $hostName,
+                'port' => intval($host['port'] ?? 6379),
+                'timeout' => floatval($this->config['timeout'] ?? 0),
+                'reserved' => $this->config['reserved'] ?? null,
+                'retryInterval' => intval($this->config['retryInterval'] ?? 0),
+                'readTimeout' => floatval($this->config['readTimeout'] ?? 0),
             ];
+            $this->pools[$hostName] = RedisConnectionPool::fromConfig(
+                fn(string $persistentId): Redis => $this->connect($hostName, $persistentId),
+                'token-' . ($this->config['name'] ?? '') . '-' . $hostName,
+                $this->config
+            );
 
-            $this->tokens[$host['token']][$host['host']] = $host['host'];
+            $this->tokens[$host['token']][$hostName] = $hostName;
         }
         ksort($this->tokens, SORT_NUMERIC);
+    }
+
+    /**
+     * Hosts for a hash: the first token above it, wrapping to the lowest
+     * token past the end of the ring. Non-strict rings append every other
+     * host as a fallback.
+     *
+     * @return string[]
+     */
+    protected function hostsFor(int $hash): array {
+        $redisHosts = null;
+        foreach ($this->tokens as $token => $hosts) {
+            if ($hash < $token) {
+                $redisHosts = $hosts;
+                break;
+            }
+        }
+        if ($redisHosts === null) {
+            $redisHosts = reset($this->tokens) ?: [];
+        }
+
+        if (!$this->strictTokenRing) {
+            foreach ($this->hosts as $hostName => $config) {
+                $redisHosts[$hostName] = $hostName;
+            }
+        }
+
+        return array_values($redisHosts);
     }
 
     /**
      * @throws
      */
     public function __call(string $name, array $arguments): mixed {
-        // Same fork hazard as PhpRedisTrait::dropForkedConnection: connections
-        // opened pre-fork are shared across workers, mixing up replies.
-        if ($this->connectedPid !== getmypid()) {
-            $this->redis = [];
-            $this->connectedPid = getmypid();
-        }
-
         $hash = 0;
         if (isset($arguments[0]) && is_scalar($arguments[0])) {
             $hash = $this->hashProvider->getHashInt($arguments[0]);
         }
+        $redisHosts = $this->hostsFor($hash);
 
-        $redisHosts = null;
-        foreach ($this->tokens as $token => $redisHosts) {
-            if ($hash < $token) {
-                break;
-            }
+        if (str_ends_with($name, '_xwait')) {
+            return $this->callUntilAnswered($redisHosts, substr($name, 0, -6), $arguments);
         }
 
-        if (!$this->strictTokenRing) {
-            foreach ($this->hosts as $hostName => $config) {
-                if (!isset($redisHosts[$hostName])) {
-                    $redisHosts[$hostName] = $hostName;
-                }
+        $pool = $this->pools[$redisHosts[0]];
+        $conn = $pool->get();
+        try {
+            return $conn->$name(...$arguments);
+        } catch (RedisException $e) {
+            $pool->invalidate($conn);
+            if (!PhpRedisTemplate::isRetrySafe($name)) {
+                throw $e;
             }
+            self::logDebug('Redis ' . $name . ' failed, retrying on a new connection: ' . $e->getMessage());
+            return $pool->get()->$name(...$arguments);
         }
+    }
 
-        if (substr($name, -6) == '_xwait') {
-            $funcName = substr($name, 0, -6);
-            $waitMs = 0;
-            while (1) {
-                if ($waitMs < 10000000) {
-                    $waitMs += 200000;
-                }
-
-                $redis = null;
-                $hostName = null;
+    /**
+     * Try each candidate host in order; when all fail, back off and retry.
+     */
+    protected function callUntilAnswered(array $redisHosts, string $name, array $arguments): mixed {
+        $waitUs = 0;
+        while (true) {
+            foreach ($redisHosts as $hostName) {
+                $pool = $this->pools[$hostName];
+                $conn = null;
                 try {
-                    foreach ($redisHosts as $hostName) {
-                        try {
-                            if (!isset($this->redis[$hostName]) || !$this->redis[$hostName]['conn']->isConnected()) {
-                                $this->reconnect($hostName);
-                            }
-                            $redis = $this->redis[$hostName]['conn'];
-                            break;
-                        } catch (Throwable $e) {
-                            self::logDebug($e->getMessage());
-                        }
-                    }
-
-                    $value = $redis->$funcName(...$arguments);
-                    $this->redis[$hostName]['lastAccessTime'] = time();
-
-                    return $value;
+                    $conn = $pool->get();
+                    return $conn->$name(...$arguments);
                 } catch (RedisException $e) {
                     self::logEx($e);
-                    usleep($waitMs);
-                    unset($this->redis[$hostName]);
-                } catch (Throwable $e) {
-                    self::logEx($e);
-                    if (!is_null($redis)) {
-                        throw $e;
+                    if ($conn !== null) {
+                        $pool->invalidate($conn);
                     }
                 }
             }
-        }
 
-        $redis = null;
-        $hostName = null;
-        foreach ($redisHosts as $hostName) {
-            if (!isset($this->redis[$hostName]) || !$this->redis[$hostName]['conn']->isConnected()) {
-                $this->reconnect($hostName);
-            }
-            $redis = $this->redis[$hostName]['conn'];
-            break;
+            $waitUs = min($waitUs + 200000, 10000000);
+            usleep($waitUs);
         }
-
-        try {
-            $value = $redis->$name(...$arguments);
-        } catch (RedisException $e) {
-            self::logDebug($e->getMessage());
-            unset($this->redis[$hostName]);
-            $this->reconnect($hostName);
-            $redis = $this->redis[$hostName]['conn'];
-            $value = $redis->$name(...$arguments);
-        }
-        $this->redis[$hostName]['lastAccessTime'] = time();
-        return $value;
     }
 
     public function checkIdleConnection(): void {
-
-        foreach ($this->redis as $hostName => $data) {
-            if ($data['lastAccessTime'] == 0 || $this->idleTimeout == 0) {
-                continue;
-            }
-
-            if ((time() - $data['lastAccessTime']) < $this->idleTimeout) {
-                continue;
-            }
-
-            $data['conn']->close();
-            unset($this->redis[$hostName]);
+        foreach ($this->pools as $pool) {
+            $pool->closeIdle();
         }
     }
 }

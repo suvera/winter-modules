@@ -14,7 +14,12 @@ class SqsUtil {
     private static array $clients = [];
 
     public static function buildClient(array $config): SqsClient {
-        $key = md5(serialize($config));
+        try {
+            $key = md5(serialize($config));
+        } catch (Throwable) {
+            // Unserializable config (closures, e.g. a credential provider): build uncached.
+            $key = 'uncached-' . bin2hex(random_bytes(8));
+        }
         if (!isset(self::$clients[$key])) {
             // Route both API requests (http_handler) and default-chain
             // credential fetching (IMDS/ECS via `client`) through Swoole's

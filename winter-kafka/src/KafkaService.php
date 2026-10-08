@@ -19,8 +19,8 @@ interface KafkaService {
         string|ProducerConfiguration $producerOrName,
         mixed $message,
         mixed $key,
-        callable $onSuccess = null,
-        callable $onFailed = null
+        ?callable $onSuccess = null,
+        ?callable $onFailed = null
     ): void;
 
     public function getProducers(): ProducerConfigurations;

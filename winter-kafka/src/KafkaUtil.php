@@ -15,7 +15,7 @@ use Throwable;
 class KafkaUtil {
     use Wlf4p;
 
-    public static function toPartitionsString(array $partitions = null): string {
+    public static function toPartitionsString(?array $partitions = null): string {
         $parts = '';
         if (is_null($partitions)) {
             return $parts;
@@ -94,7 +94,6 @@ class KafkaUtil {
     ): void {
         $topic = $producer->getTopicObject();
 
-        self::logInfo("messaged produced to " . $topic->getName());
         $topic->produce(RD_KAFKA_PARTITION_UA, 0, $message, $key);
         $producer->getRawProducer()->poll(0);
 
@@ -125,8 +124,7 @@ class KafkaUtil {
 
         $success = false;
         $trial = 0;
-        $maxTries = $producer->getConfigVal('retries', 3);
-        $maxTries = intval($maxTries);
+        $maxTries = intval($producer->getConfigVal('retries', 3));
         if ($maxTries <= 0) {
             $maxTries = 3;
         }
@@ -140,17 +138,18 @@ class KafkaUtil {
                 break;
             } /** @noinspection PhpRedundantCatchClauseInspection */
             catch (RdKafkaException $ex) {
-                try {
-                    $producer->getRawProducer()->abortTransaction($timeoutMs);
-                } catch (Throwable $e) {
-                    self::logException($e);
+                $exception = $ex;
+                if ($ex->isFatal()) {
+                    // Fenced or otherwise unusable: a fresh producer re-runs
+                    // initTransactions() on the next attempt.
+                    self::logException($ex);
+                    $producer->resetProducer();
+                    continue;
                 }
-
                 if ($ex->isRetriable()) {
                     continue;
                 }
                 self::logException($ex);
-                $exception = $ex;
                 break;
             } catch (Throwable $e) {
                 self::logException($e);
@@ -163,40 +162,44 @@ class KafkaUtil {
             if ($onSuccess != null) {
                 $onSuccess($producer, $message, $key);
             }
-        } else {
-
-            try {
-                $producer->getRawProducer()->abortTransaction($timeoutMs);
-            } catch (Throwable $e) {
-                self::logException($e);
-            }
-
-            if ($onFailed != null) {
-                $onFailed($producer->getName(), $message, $key);
-            }
-            if ($exception) {
-                throw $exception;
-            }
+            return;
         }
 
+        if ($onFailed != null) {
+            $onFailed($producer->getName(), $message, $key);
+        }
+        throw new KafkaException('Could not produce message in a transaction', 0, $exception);
     }
 
+    /**
+     * One transaction for one message. initTransactions() runs once per
+     * producer; a failure after beginTransaction() aborts that transaction
+     * (unless the producer is fatally broken) before rethrowing.
+     */
     public static function doSendMessageInTransaction(
         ProducerConfiguration $producer,
         mixed $message,
         mixed $key,
         int $timeoutMs
     ): void {
-
+        $producer->ensureTransactionsInitialized($timeoutMs);
         $topic = $producer->getTopicObject();
+        $rawProducer = $producer->getRawProducer();
 
-        $producer->getRawProducer()->initTransactions($timeoutMs);
-        $producer->getRawProducer()->beginTransaction();
-
-        $topic->produce(RD_KAFKA_PARTITION_UA, 0, $message, $key);
-        $producer->getRawProducer()->poll(0);
-
-        $producer->getRawProducer()->commitTransaction($timeoutMs);
+        $rawProducer->beginTransaction();
+        try {
+            $topic->produce(RD_KAFKA_PARTITION_UA, 0, $message, $key);
+            $rawProducer->poll(0);
+            $rawProducer->commitTransaction($timeoutMs);
+        } catch (Throwable $e) {
+            if (!($e instanceof RdKafkaException && $e->isFatal())) {
+                try {
+                    $rawProducer->abortTransaction($timeoutMs);
+                } catch (Throwable $abortEx) {
+                    self::logException($abortEx);
+                }
+            }
+            throw $e;
+        }
     }
-
 }

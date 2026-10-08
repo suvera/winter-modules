@@ -32,6 +32,34 @@ We don't want to reinvent the wheel to create another library or even wrappers.
 
 So, this module assumes that you have [PhpRedis](https://github.com/phpredis/phpredis) extension already installed.
 
+### Connections, coroutines and forks
+
+Every template keeps a small connection pool (built on winter-boot's
+`CoroutineScopedPool`):
+
+- each Swoole coroutine gets its own connection, so concurrent coroutines
+  never share a socket (required once `server.swoole.hook_flags` enables
+  `SWOOLE_HOOK_TCP`/`SWOOLE_HOOK_ALL`, and always in worker processes);
+- a coroutine's connection returns to an idle list when the coroutine ends
+  and is reused by the next one;
+- connections opened before Swoole forks its workers are left to the parent
+  and never shared with a child.
+
+Optional keys on every `singles/clusters/arrays/sentinels/tokens` entry:
+
+```yaml
+            idleTimeout: 30        # seconds; idle connections are closed/replaced (0 = never)
+            maxConnections: 50     # per template per worker process
+            maxIdle: 8             # idle connections kept for reuse
+            maxWaitMs: 5000        # wait for a free connection, then PoolExhaustedException
+```
+
+After a connection error, only read-only commands (GET, HGETALL, XRANGE, ...)
+are re-sent on a new connection. A write whose reply was lost is never
+re-sent automatically (it may already have been applied); the
+`RedisException` reaches the caller. `<command>_xwait` calls (e.g.
+`lPop_xwait`) keep retrying with backoff until Redis answers.
+
 
 ## Autowired Services
 
@@ -291,6 +319,15 @@ redis:
 `stream` defaults to the consumer `name`, `group` to `<stream>-group`.
 Consumers start automatically as Swoole worker processes
 (`workerNum` processes per consumer).
+
+The group is created at stream id `0` (with `MKSTREAM`), so entries sent
+before the first worker started are delivered too. If Redis is unreachable
+when a worker starts, it keeps retrying group creation instead of exiting
+(an exiting worker process stops the whole server).
+
+`RedisQueueService::send()` throws `RedisQueueException` when Redis does not
+accept the entry. Extra `$fields` are stored next to the reserved `payload`
+and `createdAt` fields and cannot override them.
 
 #### PHP Example
 

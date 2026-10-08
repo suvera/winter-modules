@@ -10,7 +10,6 @@ use dev\winterframework\core\context\ApplicationContextData;
 use dev\winterframework\core\context\WinterBeanProviderContext;
 use dev\winterframework\exception\BeansException;
 use dev\winterframework\exception\ModuleException;
-use dev\winterframework\sqs\SqsConnection;
 use dev\winterframework\stereotype\Module;
 use dev\winterframework\type\TypeAssert;
 use dev\winterframework\util\ModuleTrait;
@@ -27,7 +26,7 @@ class S3Module implements WinterModule {
         $config = $this->retrieveConfiguration($ctx, $ctxData, $moduleDef);
 
 
-        if (!is_array($config['s3'])) {
+        if (!isset($config['s3']) || !is_array($config['s3'])) {
             return;
         }
         foreach ($config['s3'] as $s3Config) {
@@ -77,7 +76,7 @@ class S3Module implements WinterModule {
         // Winter Boot flattens a map-form credentials block into dotted keys
         // (credentials.key, ...); reassemble it (list-form is unwrapped above).
         if (!isset($s3Config['credentials'])) {
-            [$dotted, $s3Config] = SqsConnection::extractDottedValues($s3Config, 'credentials');
+            [$dotted, $s3Config] = S3Util::extractDottedValues($s3Config, 'credentials');
             if ($dotted !== []) {
                 $s3Config['credentials'] = $dotted;
             }
@@ -96,7 +95,7 @@ class S3Module implements WinterModule {
         // Winter Boot flattens a map-form http block into dotted keys
         // (http.verify, ...); reassemble it before the list-unwrap below.
         if (!isset($s3Config['http'])) {
-            [$dotted, $s3Config] = SqsConnection::extractDottedValues($s3Config, 'http');
+            [$dotted, $s3Config] = S3Util::extractDottedValues($s3Config, 'http');
             if ($dotted !== []) {
                 $s3Config['http'] = $dotted;
             }

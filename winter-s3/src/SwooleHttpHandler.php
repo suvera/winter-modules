@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace dev\winterframework\sqs;
+namespace dev\winterframework\s3;
 
 use Aws\Credentials\CredentialProvider;
 use GuzzleHttp\Promise\Create;
@@ -127,7 +127,7 @@ class SwooleHttpHandler {
             $ok = $client->execute($path);
             if (!$ok) {
                 // Include method + URI so failures identify the target
-                // (e.g. IMDS vs the SQS endpoint) in SDK error messages.
+                // (e.g. IMDS vs the S3 endpoint) in SDK error messages.
                 $errMsg = ($client->errMsg ?: 'Swoole HTTP request failed')
                     . ' (' . $request->getMethod() . ' ' . (string) $uri . ')';
                 return Create::rejectionFor([
@@ -162,7 +162,7 @@ class SwooleHttpHandler {
      */
     public static function clientSettings(string $host, bool $ssl, string $scheme, array $options): array {
         // Guzzle semantics: 0 (the SDK default) means no limit -> Swoole -1.
-        // A fixed fallback would break SQS long polling (WaitTimeSeconds 20).
+        // A fixed fallback would cut off large or slow S3 transfers.
         $timeout = floatval($options['timeout'] ?? 0);
         $connectTimeout = floatval($options['connect_timeout'] ?? 0);
         $settings = [

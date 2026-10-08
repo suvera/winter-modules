@@ -226,6 +226,20 @@ chain.
 | retryWaitMs | int | no | 300 | Wait between retries |
 | transientExceptions | array | no | [] | Exception classes to retry on |
 
+A received batch is deleted only after your worker consumed it. If
+`consume()` throws (after the transient retries), the messages stay on the
+queue and are redelivered after `visibilityTimeout`, so the queue's redrive
+policy and dead-letter queue apply.
+
+### HTTP under Swoole
+
+Inside coroutines, requests go through Swoole's coroutine HTTP client
+(`SwooleHttpHandler`); outside coroutines (boot, CLI) the SDK's cURL handler
+is used. The connection's `http` options are honoured: `timeout` /
+`connect_timeout` (default 0 = no limit, needed for 20 s long polling),
+`verify` (TLS peer verification is on by default; `false` or a CA bundle
+path), `proxy`. Bodies are buffered in memory.
+
 ## How to write a consumer worker
 
 Implement the [`Consumer`](src/consumer/Consumer.php) interface
