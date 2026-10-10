@@ -50,7 +50,9 @@ Follow the existing shape (see `winter-s3/src/S3Module.php`,
 - Logging: `use dev\winterframework\util\log\Wlf4p;` then
   `self::logInfo()/logError()/logEx($e)` — no direct Monolog wiring in modules.
 - Caching integrations expose a `CacheManager`-compatible bean where relevant
-  (`RedisCache`, `MemcacheCache`); locking via `LockManager` beans.
+  (`RedisCache`, `MemcacheCache`). Distributed `#[Lockable]` locking: `RedisLockManager`
+  in `winter-data-redis/src/lock/` (a `StoreLockManager` over `RedisLockStore`; needs
+  winter-boot 2.1.6+). Other modules ship no `LockManager`.
 - OpenSearch connections support `migrations: {enabled: ...}` with
   `*-template.json` / `*-policy.json` file conventions.
 

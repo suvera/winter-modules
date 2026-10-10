@@ -360,3 +360,40 @@ Any other exception is permanent: the message goes to `deadLetterStream`
 (or is dropped with an error log when none is configured) so one poison
 message never blocks the stream.
 
+### 8. Distributed Locking (`RedisLockManager`)
+
+`RedisLockManager` makes `#[Lockable]` exclusive across every pod that uses the same Redis. It needs Winter Boot 2.1.6 or later.
+
+Register it as a bean on one of your templates:
+
+```php
+use dev\winterframework\data\redis\lock\RedisLockManager;
+use dev\winterframework\data\redis\phpredis\PhpRedisTemplate;
+use dev\winterframework\stereotype\Bean;
+use dev\winterframework\stereotype\Configuration;
+use dev\winterframework\util\concurrent\LockManager;
+
+#[Configuration]
+class LockConfig {
+    #[Bean('redisLockManager')]
+    public function redisLockManager(PhpRedisTemplate $redis): LockManager {
+        return new RedisLockManager($redis);   // keys: "winter:lock:<name>"
+    }
+}
+```
+
+Then name it on the methods to protect:
+
+```php
+#[Lockable(name: 'order-#{id}', ttlSeconds: 30, waitMilliSecs: 2000, lockManager: 'redisLockManager')]
+public function settle(int $id): void { /* runs on one pod at a time per order */ }
+```
+
+How it works:
+
+- Each lock is one Redis key holding the caller's random token, set with `SET NX` (plus `PX` when `ttlSeconds` is set). Only the holder's token can release or extend it, and each operation is a single Lua script, so it is atomic.
+- `ttlSeconds` is enforced by Redis itself (the server's clock), so a crashed pod's lock frees itself. Always set it: without a TTL a lock held by a crashed pod stays until it is deleted by hand.
+- `waitMilliSecs` retries every 50 ms (constructor `$pollMs`) until the lock is free or the time is up; inside a coroutine only that coroutine waits.
+- If Redis can't be reached, acquiring throws instead of running the method unprotected.
+- Constructor arguments: `new RedisLockManager($redis, $prefix = 'winter:lock:', $pollMs = 50)`. `$redis` can be a `PhpRedisTemplate`, `PhpRedisSentinelTemplate` or `PhpRedisClusterTemplate` bean, or a plain `\Redis` / `\RedisCluster`. Don't use `PhpRedisArrayTemplate`: client-side sharding can send the scripts for one lock to different nodes.
+
