@@ -60,8 +60,25 @@ class RedisModule implements WinterModule {
             fn(array $c) => new PhpRedisTokenTemplate($c),
             fn(PhpRedisTokenTemplate $t) => $t->ping()
         );
-        $this->buildQueueConsumers($config, $ctx);
-        $this->startRedisQueue($ctx);
+        // The queue service needs the Swoole server (WinterServer); only build
+        // it when consumers are configured, so CLI and batch runners can begin().
+        if ($this->hasQueueConsumers($config)) {
+            $this->buildQueueConsumers($config, $ctx);
+            $this->startRedisQueue($ctx);
+        }
+    }
+
+    protected function hasQueueConsumers(array $config): bool {
+        $consumers = $config['redis.consumers'] ?? [];
+        if (!is_array($consumers)) {
+            return false;
+        }
+        foreach ($consumers as $data) {
+            if (is_array($data) && ($data['name'] ?? '') !== self::__DEFAULT) {
+                return true;
+            }
+        }
+        return false;
     }
 
     protected function startRedisQueue(ApplicationContext $ctx): void {

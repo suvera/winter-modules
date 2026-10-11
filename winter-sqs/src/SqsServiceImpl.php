@@ -19,8 +19,6 @@ class SqsServiceImpl implements SqsService {
     protected SqsConnections $connections;
     protected ConsumerConfigurations $consumers;
 
-    #[Autowired]
-    private WinterServer $wServer;
 
     #[Autowired]
     private ApplicationContext $appCtx;
@@ -208,8 +206,12 @@ class SqsServiceImpl implements SqsService {
         self::logInfo('Starting SQS consumer worker: ' . $consumer->getName()
             . ', workerId: ' . ($i + 1)
             . ', workerClass: ' . $consumer->getWorkerClass());
-        $ps = new SqsWorkerProcess($this->wServer, $this->appCtx, $consumer, $i + 1);
-        $this->wServer->addProcess($ps);
+        // Resolved here, not autowired: producers (send) also run in CLI and
+        // batch processes, which have no Swoole server.
+        /** @var WinterServer $wServer */
+        $wServer = $this->appCtx->beanByClass(WinterServer::class);
+        $ps = new SqsWorkerProcess($wServer, $this->appCtx, $consumer, $i + 1);
+        $wServer->addProcess($ps);
     }
 
     public function beginConsume(): void {
