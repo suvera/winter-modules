@@ -56,7 +56,7 @@
         "ext-redis": "*",
         "ext-swoole": "*",
         "aws/aws-sdk-php": "^3.0",
-        "opensearch-project/opensearch-php": "2.0"
+        "opensearch-project/opensearch-php": "^2.4"
     },
     "require-dev": {
         "kwn/php-rdkafka-stubs": "dev-master"
