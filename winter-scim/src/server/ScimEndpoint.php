@@ -119,8 +119,10 @@ final class ScimEndpoint {
         return $this->handle(function () use ($type, $request) {
             $service = $this->service($type);
             $resource = new ResourceValidator($service->resourceType())->normalize(self::body($request));
-            $created = $this->present($service, $service->create($resource), ListQuery::projection($request->getQueryParams()));
-            return self::json(201, $created)->withHeader('Location', $created['meta']['location']);
+            $stored = $service->create($resource);
+            $created = $this->present($service, $stored, ListQuery::projection($request->getQueryParams()));
+            // From the stored resource: `attributes` may leave meta out of the body.
+            return self::json(201, $created)->withHeader('Location', $this->location($service, (string)($stored['id'] ?? '')));
         });
     }
 
@@ -181,9 +183,12 @@ final class ScimEndpoint {
         $meta = is_array($resource['meta'] ?? null) ? $resource['meta'] : [];
         unset($resource['schemas'], $resource['meta']);
         $out = ['schemas' => $schemas, 'id' => $id] + $resource;
-        $out['meta'] = ['resourceType' => $type->id] + $meta
-            + ['location' => rtrim($this->baseUrl, '/') . $type->endpoint . '/' . rawurlencode($id)];
+        $out['meta'] = ['resourceType' => $type->id] + $meta + ['location' => $this->location($service, $id)];
         return new AttributeSelector($type)->select($out, $projection->attributes, $projection->excludedAttributes);
+    }
+
+    private function location(ScimResourceService $service, string $id): string {
+        return rtrim($this->baseUrl, '/') . $service->resourceType()->endpoint . '/' . rawurlencode($id);
     }
 
     /** @return list<string> the core schema and the extensions $resource carries */

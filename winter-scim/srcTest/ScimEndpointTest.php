@@ -106,6 +106,14 @@ class ScimEndpointTest extends TestCase {
         $this->assertSame(self::BASE . '/Schemas/' . CoreSchemas::USER, $user['meta']['location']);
     }
 
+    public function test_create_with_attributes_still_sends_the_location(): void {
+        $response = $this->endpoint->create('Users', $this->request(['attributes' => 'userName'], ['schemas' => [CoreSchemas::USER], 'userName' => 'carol']));
+
+        $this->assertSame(201, $response->getStatus()->getValue());
+        $this->assertSame(['schemas' => [CoreSchemas::USER], 'id' => '1', 'userName' => 'carol'], $response->getBody());
+        $this->assertSame(self::BASE . '/Users/1', $response->getHeaders()->getFirst('Location'));
+    }
+
     public function test_search_request(): void {
         $this->call($this->endpoint->create('Users', $this->request(body: ['schemas' => [CoreSchemas::USER], 'userName' => 'alice'])));
 
