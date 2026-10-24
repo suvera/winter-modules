@@ -8,11 +8,14 @@ external `suvera/winter-boot` dependency, not in this repo.
 
 - One module per directory: `winter-kafka/`, `winter-sqs/`, `winter-s3/`,
   `winter-data-redis/`, `winter-data-memcache/`, `winter-opensearch/`,
-  `winter-dtce/`, `winter-security/`.
+  `winter-dtce/`, `winter-security/`, `winter-scim/`, `winter-saml/`.
 - Each module: `src/` (PSR-4, see root `composer.json`), `config/<name>-config.yml`,
-  `README.md`, `srcTest/` (currently placeholder `keepme` files only).
+  `README.md`, `srcTest/` (PHPUnit tests in `winter-scim` and `winter-saml`,
+  placeholder `keepme` files elsewhere).
 - Root `composer.json` is the single autoload surface; there is no per-module
-  `composer.json` and no phpunit config checked in.
+  `composer.json`. `phpunit.xml` at the root has one suite per tested module.
+- `winter-scim` and `winter-saml` are libraries without a `*Module` class:
+  they register no beans, apps construct their classes directly.
 - `winter-security` is a stub (`keepme.txt` only); root `composer.json` also
   references `winter-data-cassandra/mongo/elastic` namespaces with no matching
   directories — do not add code under those namespaces.
@@ -75,6 +78,8 @@ Follow the existing shape (see `winter-s3/src/S3Module.php`,
 | sqs/s3 | `aws/aws-sdk-php` |
 | opensearch | `opensearch-project/opensearch-php` |
 | dtce | `ext-swoole` (redis/kafka optional) |
+| scim | nothing beyond winter-boot |
+| saml | `simplesamlphp/saml2` 7.x (required), which needs `ext-bcmath`, `ext-dom`, `ext-openssl`, `ext-zlib` |
 
 No new required `ext-*`/composer deps without updating `composer.json`
 `require`/`suggest` and the module README.
@@ -87,9 +92,9 @@ composer dump-autoload
 php -l path/to/ChangedFile.php
 ```
 
-No test runner is configured; `srcTest/` dirs are placeholders. If you add
-behavior, add a matching `srcTest/` case and note how you ran it in your
-summary (there is no `vendor/bin/phpunit` — do not claim `composer test`).
+`vendor/bin/phpunit` runs the suites in `phpunit.xml` (`--testsuite scim`,
+`--testsuite saml`); other modules' `srcTest/` dirs are still placeholders. If
+you add behavior, add a matching `srcTest/` case and say how you ran it.
 
 ## Conventions
 

@@ -21,6 +21,8 @@ composer require suvera/winter-modules
 - [Distributed Task Computing Engine](winter-dtce/)
 - [S3 Like Storage](winter-s3/)
 - [Open Search](winter-opensearch/)
+- [SCIM 2.0 server](winter-scim/)
+- [SAML 2.0 service provider](winter-saml/)
 - Cassandra 
 - MongoDB
 - Security

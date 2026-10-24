@@ -26,3 +26,4 @@ examples/MyApp/logs/*.log
 
 
 
+.phpunit.cache/

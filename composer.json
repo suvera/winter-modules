@@ -11,6 +11,9 @@
     "config": {
         "platform": {
             "php": "8.5"
+        },
+        "allow-plugins": {
+            "simplesamlphp/composer-xmlprovider-installer": false
         }
     },
     "license": "MIT",
@@ -44,7 +47,11 @@
             "dev\\winterframework\\security\\": "winter-security/src/",
             "test\\winterframework\\security\\": "winter-security/srcTest/",
             "dev\\winterframework\\dtce\\": "winter-dtce/src/",
-            "test\\winterframework\\dtce\\": "winter-dtce/srcTest/"
+            "test\\winterframework\\dtce\\": "winter-dtce/srcTest/",
+            "dev\\winterframework\\scim\\": "winter-scim/src/",
+            "test\\winterframework\\scim\\": "winter-scim/srcTest/",
+            "dev\\winterframework\\saml\\": "winter-saml/src/",
+            "test\\winterframework\\saml\\": "winter-saml/srcTest/"
         }
     },
     "minimum-stability": "dev",
@@ -56,10 +63,13 @@
         "ext-redis": "*",
         "ext-swoole": "*",
         "aws/aws-sdk-php": "^3.0",
-        "opensearch-project/opensearch-php": "^2.4"
+        "opensearch-project/opensearch-php": "^2.4",
+        "simplesamlphp/saml2": "7.0.0-rc4"
     },
     "require-dev": {
-        "kwn/php-rdkafka-stubs": "dev-master"
+        "kwn/php-rdkafka-stubs": "dev-master",
+        "phpunit/phpunit": "^12.0",
+        "suvera/winter-boot": "^2.2"
     },
     "suggest": {
         "ext-memcached": "Needed to support Memcache",
