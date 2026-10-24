@@ -7,8 +7,9 @@ the app keeps the pending request server-side between the two steps.
 
 ## Setup
 
-Needs `ext-bcmath`, `ext-dom`, `ext-openssl` and `ext-zlib`. In the app's own
-composer.json (Composer reads `allow-plugins` only from the root project), set
+Needs `ext-bcmath`, `ext-dom`, `ext-openssl` and `ext-zlib`. 
+
+In the app's own composer.json (Composer reads `allow-plugins` only from the root project), set
 `"simplesamlphp/composer-xmlprovider-installer": false` under `allow-plugins`.
 
 ## Usage
