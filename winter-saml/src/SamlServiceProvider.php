@@ -53,8 +53,12 @@ final class SamlServiceProvider {
         SamlLibraryContainer::install();
     }
 
-    /** An HTTP-Redirect binding AuthnRequest; $relayState comes back with the response (at most 80 bytes). */
-    public function startLogin(ServiceProviderSettings $sp, IdentityProviderSettings $idp, ?string $relayState = null): AuthnRedirect {
+    /**
+     * An HTTP-Redirect binding AuthnRequest; $relayState comes back with the response (at most 80 bytes).
+     * $forceAuthn asks the IdP to make the person sign in again instead of reusing its session (a step-up
+     * before a sensitive change). Some IdPs ignore it: check SamlIdentity::authenticatedWithin() on the answer.
+     */
+    public function startLogin(ServiceProviderSettings $sp, IdentityProviderSettings $idp, ?string $relayState = null, bool $forceAuthn = false): AuthnRedirect {
         if ($relayState !== null && strlen($relayState) > 80) {
             throw new SamlException('RelayState is longer than 80 bytes');
         }
@@ -63,6 +67,7 @@ final class SamlServiceProvider {
             IDValue::fromString($id),
             SAMLDateTimeValue::fromDateTime(new DateTimeImmutable('now', new DateTimeZone('UTC'))),
             nameIdPolicy: new NameIDPolicy(SAMLAnyURIValue::fromString($sp->nameIdFormat), AllowCreate: BooleanValue::fromBoolean(true)),
+            forceAuthn: $forceAuthn ? BooleanValue::fromBoolean(true) : null,
             assertionConsumerServiceURL: SAMLAnyURIValue::fromString($sp->acsUrl),
             protocolBinding: SAMLAnyURIValue::fromString(C::BINDING_HTTP_POST),
             issuer: new Issuer(SAMLStringValue::fromString($sp->entityId)),
@@ -211,8 +216,13 @@ final class SamlServiceProvider {
             }
         }
         $sessionIndex = null;
+        $authnInstant = null;
         foreach ($assertion->getAuthnStatements() as $statement) {
             $sessionIndex ??= $statement->getSessionIndex()?->getValue();
+            $instant = DateTimeImmutable::createFromInterface($statement->getAuthnInstant()->toDateTime());
+            if ($authnInstant === null || $instant > $authnInstant) {
+                $authnInstant = $instant;
+            }
         }
         return new SamlIdentity(
             $nameId->getContent()->getValue(),
@@ -220,6 +230,7 @@ final class SamlServiceProvider {
             $attributes,
             $sessionIndex,
             $relayState,
+            $authnInstant,
         );
     }
 

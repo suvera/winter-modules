@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use dev\winterframework\saml\IdentityProviderSettings;
 use dev\winterframework\saml\SamlException;
+use dev\winterframework\saml\SamlIdentity;
 use dev\winterframework\saml\SamlReplayStore;
 use dev\winterframework\saml\SamlServiceProvider;
 use dev\winterframework\saml\ServiceProviderSettings;
@@ -64,6 +65,26 @@ class SamlServiceProviderTest extends TestCase {
         $this->assertStringContainsString('ID="' . $redirect->requestId . '"', $xml);
         $this->assertStringContainsString('AssertionConsumerServiceURL="' . self::ACS . '"', $xml);
         $this->assertStringContainsString('>' . self::SP . '</saml:Issuer>', $xml);
+        $this->assertStringNotContainsString('ForceAuthn', $xml);
+    }
+
+    public function test_start_login_can_force_a_fresh_sign_in(): void {
+        $redirect = $this->provider->startLogin($this->sp, $this->idp, forceAuthn: true);
+
+        parse_str((string)parse_url($redirect->url, PHP_URL_QUERY), $query);
+        $this->assertStringContainsString('ForceAuthn="true"', gzinflate(base64_decode($query['SAMLRequest'])));
+    }
+
+    public function test_the_identity_tells_when_the_person_last_signed_in(): void {
+        $fresh = $this->provider->finishLogin($this->sp, $this->idp, ['SAMLResponse' => $this->response('_r1')], '_r1', $this->replay);
+        $reused = $this->provider->finishLogin($this->sp, $this->idp, ['SAMLResponse' => $this->response('_r2', authnAt: '-2 hours')], '_r2', $this->replay);
+
+        $this->assertEqualsWithDelta(time(), $fresh->authnInstant?->getTimestamp(), 5);
+        $this->assertTrue($fresh->authenticatedWithin(300));
+        $this->assertEqualsWithDelta(time() - 7200, $reused->authnInstant?->getTimestamp(), 5);
+        $this->assertFalse($reused->authenticatedWithin(300));
+        $this->assertTrue($reused->authenticatedWithin(3 * 3600));
+        $this->assertFalse(new SamlIdentity('x', null, [], null, null)->authenticatedWithin(300));
     }
 
     public function test_a_signed_answer_to_our_request_signs_in(): void {
@@ -164,6 +185,7 @@ class SamlServiceProviderTest extends TestCase {
         string $audience = self::SP,
         string $destination = self::ACS,
         string $validUntil = '+5 minutes',
+        string $authnAt = 'now',
     ): string {
         $key ??= self::$idpKey;
         $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
@@ -182,7 +204,7 @@ class SamlServiceProviderTest extends TestCase {
               <saml:Conditions NotBefore="{$time('-30 minutes')}" NotOnOrAfter="{$time($validUntil)}">
                 <saml:AudienceRestriction><saml:Audience>$audience</saml:Audience></saml:AudienceRestriction>
               </saml:Conditions>
-              <saml:AuthnStatement AuthnInstant="{$time('now')}" SessionIndex="_session1">
+              <saml:AuthnStatement AuthnInstant="{$time($authnAt)}" SessionIndex="_session1">
                 <saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef></saml:AuthnContext>
               </saml:AuthnStatement>
               <saml:AttributeStatement>

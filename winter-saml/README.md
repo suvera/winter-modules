@@ -52,6 +52,23 @@ assertion; that the response answers this browser's request (or, with
 `allowIdpInitiated`, answers none); Destination, Recipient and Audience;
 NotBefore / NotOnOrAfter with 60 seconds of skew; one use per assertion.
 
+## Step-up: a fresh sign-in
+
+Before a sensitive change, ask the IdP to make the person sign in again
+instead of reusing its session, and check the answer, since some IdPs
+ignore `ForceAuthn`:
+
+```php
+$redirect = $saml->startLogin($sp, $idp, forceAuthn: true);
+// ... at the ACS, after finishLogin:
+if (!$identity->authenticatedWithin(300)) {
+    // the IdP reused an older sign-in: fall back to another check
+}
+```
+
+`$identity->authnInstant` is when the person last actually signed in at the
+IdP (the latest AuthnStatement's `AuthnInstant`).
+
 Not supported yet: signed AuthnRequests, encrypted assertions, single logout.
 
 ## Tests
